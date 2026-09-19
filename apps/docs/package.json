@@ -16,5 +16,8 @@
     "just-bash": "^3.4.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.56.1"
   }
 }

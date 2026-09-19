@@ -16,6 +16,9 @@
         "react": "^19.2.0",
         "react-dom": "^19.2.0",
       },
+      "devDependencies": {
+        "playwright-core": "^1.56.1",
+      },
     },
     "packages/opfs-fs": {
       "name": "@kucukkanat/opfs-fs",
