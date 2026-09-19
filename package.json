@@ -1,0 +1,15 @@
+{
+  "name": "@kucukkanat/opfs-fs-monorepo",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.3.14",
+  "workspaces": ["packages/*", "apps/*", "examples/*"],
+  "scripts": {
+    "build": "bun run --filter '*' build",
+    "test": "bun run --filter '*' test",
+    "test:integration": "bun run --filter '*' test:integration",
+    "docs:dev": "bun run --filter='@kucukkanat/opfs-fs' build && bun run --filter='@kucukkanat/opfs-fs-docs' dev",
+    "docs:build": "bun run --filter='@kucukkanat/opfs-fs' build && bun run --filter='@kucukkanat/opfs-fs-docs' build",
+    "check": "bun run build && bun run test"
+  }
+}

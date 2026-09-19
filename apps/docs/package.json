@@ -1,0 +1,20 @@
+{
+  "name": "@kucukkanat/opfs-fs-docs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "blume dev",
+    "build": "blume build",
+    "test": "blume check",
+    "test:integration": "bun run build && bun test test/integration"
+  },
+  "dependencies": {
+    "@kucukkanat/opfs-fs": "workspace:*",
+    "@wterm/dom": "^0.5.0",
+    "@wterm/react": "^0.5.0",
+    "blume": "^1.7.1",
+    "just-bash": "^3.4.2",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "name": "@kucukkanat/opfs-fs",
+  "version": "0.1.0-next.0",
+  "description": "A durable, transactional POSIX-like filesystem for the browser's OPFS.",
+  "type": "module",
+  "files": ["dist", "README.md"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./tar": {
+      "types": "./dist/tar.d.ts",
+      "import": "./dist/tar.js"
+    },
+    "./just-bash": {
+      "types": "./dist/just-bash.d.ts",
+      "import": "./dist/just-bash.js"
+    }
+  },
+  "peerDependencies": {
+    "just-bash": "^3.4.2"
+  },
+  "peerDependenciesMeta": {
+    "just-bash": { "optional": true }
+  },
+  "devDependencies": {
+    "just-bash": "^3.4.2",
+    "playwright-core": "^1.56.1"
+  },
+  "scripts": {
+    "build": "bunx tsc -p tsconfig.json",
+    "test": "bun test test/unit",
+    "test:integration": "bun run build && bun test test/integration"
+  },
+  "keywords": ["opfs", "filesystem", "browser", "storage"],
+  "license": "MIT"
+}

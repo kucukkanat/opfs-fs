@@ -1,0 +1,44 @@
+---
+title: opfs-fs
+description: Durable, transactional workspaces in the browser’s Origin Private File System.
+---
+
+`opfs-fs` gives browser applications an asynchronous POSIX-like workspace with durable commits, real hard links and symlinks, plus a first-class `just-bash` integration.
+
+:::warning
+OPFS data belongs to the current origin. Use the explicit export/reset APIs for user-controlled portability and deletion.
+:::
+
+## Install
+
+```package-install
+npm install @kucukkanat/opfs-fs
+```
+
+## Open a workspace
+
+```ts
+import { openWorkspace } from "@kucukkanat/opfs-fs"
+
+const fs = await openWorkspace({
+  name: "agent-workspace",
+  root: "/workspace",
+})
+
+await fs.writeFile("/workspace/README.md", "# Durable browser workspace\n")
+```
+
+Every individual mutation auto-commits. Use `transaction()` when several changes must become visible together.
+
+```ts
+await fs.transaction(async (tx) => {
+  await tx.mkdir("/workspace/src", { recursive: true })
+  await tx.mv("/workspace/README.md", "/workspace/src/README.md")
+})
+```
+
+## Try it
+
+<WorkspaceDemo />
+
+The demo uses a unique OPFS workspace per browser profile. Reload it to prove the workspace survives application state.

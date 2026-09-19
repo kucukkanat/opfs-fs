@@ -1,0 +1,32 @@
+---
+title: just-bash
+description: Plug an OPFS workspace straight into just-bash.
+---
+
+`@kucukkanat/opfs-fs/just-bash` is a zero-runtime adapter: the workspace already satisfies `just-bash`’s asynchronous filesystem contract.
+
+```package-install
+npm install @kucukkanat/opfs-fs just-bash
+```
+
+```ts
+import { Bash } from "just-bash/browser"
+import { openWorkspace } from "@kucukkanat/opfs-fs"
+import { createJustBashFileSystem } from "@kucukkanat/opfs-fs/just-bash"
+
+const workspace = await openWorkspace({ name: "shell", root: "/workspace" })
+const bash = new Bash({
+  fs: createJustBashFileSystem(workspace),
+  cwd: "/workspace",
+  executionLimitProfile: "hardened",
+})
+
+await bash.exec("printf durable > note.txt")
+await bash.exec("cat note.txt") // stdout: durable
+```
+
+<JustBashDemo />
+
+:::tip
+Keep the workspace open for the lifetime of your shell. Call `close()` only when your application disposes its terminal.
+:::

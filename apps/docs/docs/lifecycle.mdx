@@ -1,0 +1,31 @@
+---
+title: Workspace lifecycle
+description: Persistence, transactions, storage, export, and reset.
+---
+
+## Persistence and quota
+
+`openWorkspace()` throws `CapabilityError` when OPFS or Web Locks are unavailable. It never silently substitutes volatile memory.
+
+```ts
+const { usage, quota } = await fs.storage.estimate()
+
+// Invoke only from an explicit user action; the browser may decline.
+const persistent = await fs.storage.requestPersistence()
+```
+
+## Export and import
+
+```ts
+const tar = await fs.exportArchive({ format: "tar" })
+const download = URL.createObjectURL(tar)
+
+await fs.reset() // destructive: confirm this with the user first
+await fs.importArchive(tar)
+```
+
+Exports preserve files, directories, modes, and symbolic links. The managed OPFS layout is intentionally private; use TAR for portability.
+
+## Multiple tabs and workers
+
+Writes are serialized through Web Locks. Each mutation publishes a new immutable metadata generation, so a reader sees either the previous complete tree or the next complete tree—never an intermediate transaction.

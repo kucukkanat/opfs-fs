@@ -1,0 +1,24 @@
+---
+title: wterm
+description: Build a live browser terminal backed by just-bash and opfs-fs.
+---
+
+`wterm` supplies terminal rendering and input; `just-bash` executes commands; `opfs-fs` owns the durable filesystem. Keeping those roles separate makes each layer replaceable.
+
+```package-install
+npm install @kucukkanat/opfs-fs just-bash @wterm/react @wterm/dom react react-dom
+```
+
+```tsx
+import { Terminal, useTerminal } from "@wterm/react"
+import { Bash } from "just-bash/browser"
+import { openWorkspace } from "@kucukkanat/opfs-fs"
+import { createJustBashFileSystem } from "@kucukkanat/opfs-fs/just-bash"
+
+// Create Bash with createJustBashFileSystem(workspace), then route wterm's
+// onData input to bash.exec(). The live demo below is the complete pattern.
+```
+
+<WtermDemo />
+
+Type `help`, `pwd`, `ls`, `cat welcome.txt`, or create a file with `printf hello > note.txt`. Reload this page and run `cat note.txt`: the content remains in OPFS.
