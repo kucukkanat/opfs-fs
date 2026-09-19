@@ -1,5 +1,9 @@
 node_modules
+# The published library is also installed straight from GitHub, where npm does
+# not run its registry packaging step. Keep its ESM build under source control.
 dist
+!packages/opfs-fs/dist/
+!packages/opfs-fs/dist/**
 .blume
 .blume-verify
 .astro
