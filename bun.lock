@@ -4,11 +4,17 @@
   "workspaces": {
     "": {
       "name": "@kucukkanat/opfs-fs-monorepo",
+      "peerDependencies": {
+        "just-bash": "^3.4.2",
+      },
+      "optionalPeers": [
+        "just-bash",
+      ],
     },
     "apps/docs": {
       "name": "@kucukkanat/opfs-fs-docs",
       "dependencies": {
-        "@kucukkanat/opfs-fs": "workspace:*",
+        "@kucukkanat/opfs-fs": "file:../../packages/opfs-fs",
         "@wterm/dom": "^0.5.0",
         "@wterm/react": "^0.5.0",
         "blume": "^1.7.1",
@@ -2077,6 +2083,8 @@
     "@emnapi/wasi-threads/tslib": ["tslib@2.8.1", "", {}, "sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w=="],
 
     "@img/sharp-wasm32/@emnapi/runtime": ["@emnapi/runtime@1.11.3", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-Xz4Tpyki7XyrpbUK1jR1AhdAdaXyhhY4lZ3neLodmhpuWfy2PAQN5B46sAiU4liOXGLkHypn/qU+jvfWSCYYLA=="],
+
+    "@kucukkanat/opfs-fs-docs/@kucukkanat/opfs-fs": ["@kucukkanat/opfs-fs@file:packages/opfs-fs", { "devDependencies": { "just-bash": "^3.4.2", "playwright-core": "^1.56.1" }, "peerDependencies": { "just-bash": "^3.4.2" }, "optionalPeers": ["just-bash"] }],
 
     "@pierre/diffs/diff": ["diff@9.0.0", "", {}, "sha512-svtcdpS8CgJyqAjEQIXdb3OjhFVVYjzGAPO8WGCmRbrml64SPw/jJD4GoE98aR7r25A0XcgrK3F02yw9R/vhQw=="],
 
