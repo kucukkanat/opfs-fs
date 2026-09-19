@@ -31,6 +31,17 @@ fs.close()
 Use `fs.storage.estimate()` to show storage usage and
 `fs.storage.requestPersistence()` only from an explicit user action.
 
+## Complete example
+
+The full browser flow—transactions, text and bytes, POSIX metadata and links,
+recursive operations, TAR export/import, storage, typed errors, lifecycle, and
+`just-bash`—is maintained as one copy-pasteable example in the documentation:
+[Complete opfs-fs example](https://kucukkanat.github.io/opfs-fs/complete-example/).
+
+`opfs-fs` v1 uses byte-oriented reads and writes rather than filesystem stream
+methods. Use `readFileBuffer()`/`writeFile(new Uint8Array(...))`, or consume an
+exported archive with the browser's `Blob.stream()`.
+
 ## just-bash
 
 ```ts

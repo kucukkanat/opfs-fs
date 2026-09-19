@@ -1,0 +1,116 @@
+---
+title: Complete example
+description: One browser application flow covering the opfs-fs API and just-bash.
+---
+
+This is the canonical end-to-end example. It starts from an empty named workspace, builds a small project atomically, demonstrates POSIX metadata and links, runs `just-bash`, exports and restores a TAR, reports storage, handles typed errors, and closes the workspace.
+
+It is deliberately a single flow rather than a collection of disconnected snippets. The `reset()` calls are safe here only because the example owns the `complete-demo` workspace; production UI should require confirmation before reset.
+
+```package-install
+npm install @kucukkanat/opfs-fs just-bash
+```
+
+```ts
+import { Bash } from "just-bash/browser"
+import {
+  CapabilityError,
+  OpfsFsError,
+  openWorkspace,
+} from "@kucukkanat/opfs-fs"
+import { createJustBashFileSystem } from "@kucukkanat/opfs-fs/just-bash"
+
+const root = "/workspace"
+const workspace = await openWorkspace({ name: "complete-demo", root })
+
+try {
+  // This example owns this named workspace. Do not reset a user's workspace
+  // without a confirmation step in your application.
+  await workspace.reset()
+
+  // A transaction publishes this whole project tree in one committed generation.
+  await workspace.transaction(async (fs) => {
+    await fs.mkdir(`${root}/src`, { recursive: true })
+    await fs.mkdir(`${root}/bin`, { recursive: true })
+    await fs.writeFile(`${root}/README.md`, "# OPFS project\\n", { mode: 0o644 })
+    await fs.appendFile(`${root}/README.md`, "Built atomically.\\n")
+    await fs.writeFile(`${root}/src/main.ts`, "export const answer = 42\\n")
+    await fs.writeFile(`${root}/bin/icon.bin`, new Uint8Array([0x4f, 0x50, 0x46, 0x53]))
+
+    // Hard links share an inode; symbolic links preserve their target text.
+    await fs.link(`${root}/README.md`, `${root}/README-copy.md`)
+    await fs.symlink("../README.md", `${root}/src/readme`)
+    await fs.chmod(`${root}/src/main.ts`, 0o755)
+    await fs.utimes(`${root}/src/main.ts`, new Date(), new Date("2026-01-01T00:00:00Z"))
+  })
+
+  const source = await workspace.readFile(`${root}/src/main.ts`, "utf8")
+  const icon = await workspace.readFileBuffer(`${root}/bin/icon.bin`)
+  const readmeStat = await workspace.stat(`${root}/README.md`)
+  const linkStat = await workspace.lstat(`${root}/src/readme`)
+  const linkTarget = await workspace.readlink(`${root}/src/readme`)
+  const resolvedLink = await workspace.realpath(`${root}/src/readme`)
+  const srcEntries = await workspace.readdirWithFileTypes(`${root}/src`)
+
+  console.log({
+    source,
+    icon: [...icon],
+    readmeMode: readmeStat.mode.toString(8),
+    isSymlink: linkStat.isSymbolicLink,
+    linkTarget,
+    resolvedLink,
+    srcEntries,
+    exists: await workspace.exists(`${root}/README-copy.md`),
+    absolutePath: workspace.resolvePath(`${root}/src`, "../README.md"),
+    allPaths: workspace.getAllPaths(),
+  })
+
+  // Copy and move retain the original until an explicit recursive removal.
+  await workspace.cp(`${root}/src`, `${root}/src-copy`, { recursive: true })
+  await workspace.mv(`${root}/src-copy`, `${root}/backup`)
+  console.log("backup entries:", await workspace.readdir(`${root}/backup`))
+  await workspace.rm(`${root}/backup`, { recursive: true })
+
+  // The adapter makes the durable workspace directly usable by just-bash.
+  const bash = new Bash({
+    fs: createJustBashFileSystem(workspace),
+    cwd: root,
+    executionLimitProfile: "hardened",
+  })
+  const command = await bash.exec("printf 'written by just-bash\\n' > shell.txt; cat shell.txt")
+  console.log(command.stdout) // written by just-bash
+
+  // TAR is the portable representation. It includes files, directories, modes,
+  // timestamps, and symbolic links; hard links are materialized as file entries.
+  const archive = await workspace.exportArchive({ format: "tar" })
+  const portableBytes = new Uint8Array(await archive.arrayBuffer())
+  console.log(`Exported ${portableBytes.byteLength} bytes`)
+
+  await workspace.reset()
+  await workspace.importArchive(portableBytes)
+  console.log(await workspace.readFile(`${root}/shell.txt`))
+
+  // Call persistence only from a deliberate user gesture in a real UI.
+  const { usage, quota } = await workspace.storage.estimate()
+  console.log({ usage, quota })
+  // const persistent = await workspace.storage.requestPersistence()
+} catch (error) {
+  if (error instanceof CapabilityError) {
+    // Render a supported-browser / secure-context message in your application.
+    console.error(error.message)
+  } else if (error instanceof OpfsFsError) {
+    // POSIX-style failures expose a stable code such as ENOENT, EEXIST, or EISDIR.
+    console.error(`${error.code}: ${error.message}`)
+  } else {
+    throw error
+  }
+} finally {
+  workspace.close()
+}
+```
+
+To make the same workspace interactive, pass it to the [just-bash adapter](/opfs-fs/just-bash/) and route each `wterm` command line to `bash.exec(command, { cwd })`. The [live wterm example](/opfs-fs/wterm/) includes the small session layer that retains `cd` and command history between commands.
+
+:::tip
+`opfs-fs` v1 exposes byte-oriented reads and writes (`readFileBuffer()` and `writeFile()` with `Uint8Array`) rather than filesystem stream methods. Use the browser's `Blob.stream()` on an exported archive when you need stream consumption.
+:::
