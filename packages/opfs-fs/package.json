@@ -1,6 +1,6 @@
 {
   "name": "@kucukkanat/opfs-fs",
-  "version": "0.1.0-next.0",
+  "version": "0.1.0",
   "description": "A durable, transactional POSIX-like filesystem for the browser's OPFS.",
   "type": "module",
   "files": [
