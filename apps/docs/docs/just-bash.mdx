@@ -16,7 +16,7 @@ For reproducible builds, replace `#main` with a full commit SHA. The adapter's
 import path stays the same:
 
 ```ts
-import { createJustBashFileSystem } from "@kucukkanat/opfs-fs/just-bash"
+import { createJustBashFileSystem, createJustBashTerminalSession } from "@kucukkanat/opfs-fs/just-bash"
 ```
 
 ```ts
@@ -34,6 +34,19 @@ const bash = new Bash({
 await bash.exec("printf durable > note.txt")
 await bash.exec("cat note.txt") // stdout: durable
 ```
+
+For a terminal renderer, make the renderer-neutral session explicit. Its
+`handleInput()` method is the glue between raw terminal input and `bash.exec()`:
+
+```ts
+const session = createJustBashTerminalSession(bash, { cwd: "/workspace" })
+
+terminal.onData((data) => session.handleInput(data, (text) => terminal.write(text)))
+session.writePrompt((text) => terminal.write(text))
+```
+
+See the complete [xterm.js integration](/opfs-fs/xterm/) for lifecycle and
+initialization wiring.
 
 <JustBashDemo />
 

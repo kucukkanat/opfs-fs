@@ -46,7 +46,11 @@ exported archive with the browser's `Blob.stream()`.
 
 ```ts
 import { Bash } from "just-bash/browser"
-import { createJustBashFileSystem } from "@kucukkanat/opfs-fs/just-bash"
+import { createJustBashFileSystem, createJustBashTerminalSession } from "@kucukkanat/opfs-fs/just-bash"
 
 const bash = new Bash({ fs: createJustBashFileSystem(fs), cwd: "/workspace" })
+
+const session = createJustBashTerminalSession(bash, { cwd: "/workspace" })
+terminal.onData((data) => session.handleInput(data, (text) => terminal.write(text)))
+session.writePrompt((text) => terminal.write(text))
 ```

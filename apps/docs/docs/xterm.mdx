@@ -18,8 +18,12 @@ import { FitAddon } from "@xterm/addon-fit"
 import { Terminal } from "@xterm/xterm"
 import "@xterm/xterm/css/xterm.css"
 import { Bash } from "just-bash/browser"
-import { openWorkspace } from "@kucukkanat/opfs-fs"
-import { createJustBashFileSystem } from "@kucukkanat/opfs-fs/just-bash"
+import { openWorkspace, type OpfsWorkspace } from "@kucukkanat/opfs-fs"
+import {
+  createJustBashFileSystem,
+  createJustBashTerminalSession,
+  type JustBashTerminalSession,
+} from "@kucukkanat/opfs-fs/just-bash"
 
 export function OpfsXterm() {
   const host = useRef<HTMLDivElement>(null)
@@ -34,27 +38,36 @@ export function OpfsXterm() {
     fit.fit()
 
     let disposed = false
-    const disposeInput = terminal.onData((data) => {
-      // Pass data to your line editor/session. It should call bash.exec() for a
-      // completed line and send result.stdout/result.stderr to terminal.write().
-      console.log(data)
-    })
+    let workspace: OpfsWorkspace | undefined
+    let session: JustBashTerminalSession | undefined
+    const write = (value: string): void => terminal.write(value)
 
-    void openWorkspace({ name: "terminal", root: "/workspace" }).then((workspace) => {
-      if (disposed) { workspace.close(); return }
-      const bash = new Bash({
-        fs: createJustBashFileSystem(workspace),
-        cwd: "/workspace",
-        executionLimitProfile: "hardened",
-      })
-      terminal.write("opfs-fs is ready\\r\\n")
-      void bash.exec("printf 'durable shell\\n' > welcome.txt")
-      // Retain workspace and bash in your session controller until disposal.
-    })
+    // This is the glue: xterm sends raw key data to the renderer-neutral
+    // session, which edits the line and invokes bash.exec() when Enter arrives.
+    const disposeInput = terminal.onData((data) => session?.handleInput(data, write))
+
+    void (async () => {
+      try {
+        workspace = await openWorkspace({ name: "terminal", root: "/workspace" })
+        if (disposed) { workspace.close(); return }
+        const bash = new Bash({
+          fs: createJustBashFileSystem(workspace),
+          cwd: "/workspace",
+          executionLimitProfile: "hardened",
+        })
+        session = createJustBashTerminalSession(bash, { cwd: "/workspace" })
+        await workspace.writeFile("/workspace/welcome.txt", "Hello from OPFS\\n")
+        write("opfs-fs + just-bash + xterm.js\\r\\n")
+        session.writePrompt(write)
+      } catch (error) {
+        write(`Unable to open OPFS: ${error instanceof Error ? error.message : "Unknown error"}\\r\\n`)
+      }
+    })()
 
     return () => {
       disposed = true
       disposeInput.dispose()
+      workspace?.close()
       terminal.dispose()
     }
   }, [])
@@ -67,8 +80,8 @@ export function OpfsXterm() {
 
 <XtermDemo />
 
-This demo uses the same renderer-neutral session as the [wterm example](/opfs-fs/wterm/): it keeps command history, serializes commands, converts `\\n` to terminal line endings, and carries a standalone `cd` into the next command. Type `help`, `pwd`, `ls`, `cat welcome.txt`, or `printf hello > note.txt`. Reload, then `cat note.txt` to verify OPFS persistence.
+`createJustBashTerminalSession()` is the glue layer. It keeps command history, serializes commands, converts `\\n` to terminal line endings, and carries a standalone `cd` into the next command while leaving rendering to xterm.js. Type `help`, `pwd`, `ls`, `cat welcome.txt`, or `printf hello > note.txt`. Reload, then `cat note.txt` to verify OPFS persistence.
 
 :::tip
-`Bash.exec()` scopes `cwd` to one execution. An interactive terminal session should retain its own current directory and pass it to each call; both live examples do this.
+`Bash.exec()` scopes `cwd` to one execution. `createJustBashTerminalSession()` retains the interactive current directory and passes it to each call.
 :::
