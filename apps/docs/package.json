@@ -12,6 +12,8 @@
     "@kucukkanat/opfs-fs": "file:../../packages/opfs-fs",
     "@wterm/dom": "^0.5.0",
     "@wterm/react": "^0.5.0",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "blume": "^1.7.1",
     "just-bash": "^3.4.2",
     "react": "^19.2.0",

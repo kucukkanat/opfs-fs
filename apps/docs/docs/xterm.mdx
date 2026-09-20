@@ -1,0 +1,74 @@
+---
+title: xterm.js
+description: Build a durable browser terminal with xterm.js, just-bash, and opfs-fs.
+---
+
+`xterm.js` renders the terminal and supplies input. `just-bash` executes commands,
+and `opfs-fs` owns the durable workspace. No xterm-specific filesystem adapter is
+needed: adapt the workspace to `just-bash`, then connect xterm's `onData()` and
+`write()` APIs to your shell session.
+
+```sh
+npm install @kucukkanat/opfs-fs@github:kucukkanat/opfs-fs#main just-bash @xterm/xterm @xterm/addon-fit react react-dom
+```
+
+```tsx
+import { useEffect, useRef } from "react"
+import { FitAddon } from "@xterm/addon-fit"
+import { Terminal } from "@xterm/xterm"
+import "@xterm/xterm/css/xterm.css"
+import { Bash } from "just-bash/browser"
+import { openWorkspace } from "@kucukkanat/opfs-fs"
+import { createJustBashFileSystem } from "@kucukkanat/opfs-fs/just-bash"
+
+export function OpfsXterm() {
+  const host = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const target = host.current
+    if (!target) return
+    const terminal = new Terminal({ cursorBlink: true, rows: 18 })
+    const fit = new FitAddon()
+    terminal.loadAddon(fit)
+    terminal.open(target)
+    fit.fit()
+
+    let disposed = false
+    const disposeInput = terminal.onData((data) => {
+      // Pass data to your line editor/session. It should call bash.exec() for a
+      // completed line and send result.stdout/result.stderr to terminal.write().
+      console.log(data)
+    })
+
+    void openWorkspace({ name: "terminal", root: "/workspace" }).then((workspace) => {
+      if (disposed) { workspace.close(); return }
+      const bash = new Bash({
+        fs: createJustBashFileSystem(workspace),
+        cwd: "/workspace",
+        executionLimitProfile: "hardened",
+      })
+      terminal.write("opfs-fs is ready\\r\\n")
+      void bash.exec("printf 'durable shell\\n' > welcome.txt")
+      // Retain workspace and bash in your session controller until disposal.
+    })
+
+    return () => {
+      disposed = true
+      disposeInput.dispose()
+      terminal.dispose()
+    }
+  }, [])
+
+  return <div ref={host} />
+}
+```
+
+## Live example
+
+<XtermDemo />
+
+This demo uses the same renderer-neutral session as the [wterm example](/opfs-fs/wterm/): it keeps command history, serializes commands, converts `\\n` to terminal line endings, and carries a standalone `cd` into the next command. Type `help`, `pwd`, `ls`, `cat welcome.txt`, or `printf hello > note.txt`. Reload, then `cat note.txt` to verify OPFS persistence.
+
+:::tip
+`Bash.exec()` scopes `cwd` to one execution. An interactive terminal session should retain its own current directory and pass it to each call; both live examples do this.
+:::
