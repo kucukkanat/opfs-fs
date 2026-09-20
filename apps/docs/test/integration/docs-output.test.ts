@@ -1,13 +1,11 @@
 import { afterAll, beforeAll, expect, test } from "bun:test"
-import { chromium, type Browser } from "playwright-core"
+import { chromium } from "playwright-core"
 
 const chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 const docs = `${import.meta.dir}/../../dist`
-let browser: Browser | undefined
 let server: ReturnType<typeof Bun.serve> | undefined
 
-beforeAll(async () => {
-  browser = await chromium.launch({ executablePath: chrome, headless: true })
+beforeAll(() => {
   server = Bun.serve({
     port: 0,
     fetch: (request) => {
@@ -20,9 +18,8 @@ beforeAll(async () => {
   })
 })
 
-afterAll(async () => {
+afterAll(() => {
   server?.stop(true)
-  await browser?.close()
 })
 
 test("emits the interactive wterm documentation page", async () => {
@@ -37,42 +34,48 @@ test("emits the interactive xterm.js documentation page", async () => {
   expect(page).toContain("@xterm/xterm")
 })
 
+test("executes OPFS-backed commands in xterm.js", xtermIntegration, 15_000)
+
 test("executes terminal commands and recalls command history", async () => {
-  const activeBrowser = browser
   const activeServer = server
-  if (!activeBrowser || !activeServer) throw new Error("Browser test setup failed.")
-  const context = await activeBrowser.newContext()
-  const page = await context.newPage()
-  await page.goto(`${activeServer.url}opfs-fs/wterm/`)
-  const terminal = page.locator("[data-testid=wterm-demo] textarea")
-  await terminal.waitFor({ state: "visible" })
-  await page.waitForFunction(() => document.querySelector("[data-testid=wterm-demo]")?.textContent?.includes("opfs-fs + just-bash + wterm"))
-  await terminal.pressSequentially("echo hello")
-  await terminal.press("Enter")
-  await page.waitForTimeout(100)
-  await terminal.press("ArrowUp")
-  await terminal.press("Enter")
-  await page.waitForTimeout(100)
-  const historyOutput = await page.locator("[data-testid=wterm-demo]").innerText()
-  expect(historyOutput.match(/opfs:\/workspace\$ echo hello/g)?.length).toBe(2)
-  await terminal.pressSequentially("cat welcome.txt")
-  await terminal.press("Enter")
-  await page.waitForTimeout(100)
-  await terminal.pressSequentially("cd /")
-  await terminal.press("Enter")
-  await page.waitForTimeout(100)
-  await terminal.pressSequentially("pwd")
-  await terminal.press("Enter")
-  await page.waitForTimeout(300)
-  const output = await page.locator("[data-testid=wterm-demo]").innerText()
-  expect(output).toContain("hello")
-  expect(output).toContain("This file lives in OPFS.")
-  expect(output).not.toContain("This file lives in OPFS.\\n")
-  expect(output).toMatch(/\n\/\s*\n/)
-  await context.close()
+  if (!activeServer) throw new Error("Browser test setup failed.")
+  const wtermBrowser = await chromium.launch({ executablePath: chrome, headless: true })
+  try {
+    const context = await wtermBrowser.newContext()
+    const page = await context.newPage()
+    await page.goto(`${activeServer.url}opfs-fs/wterm/`)
+    const terminal = page.locator("[data-testid=wterm-demo] textarea")
+    await terminal.waitFor({ state: "visible" })
+    await page.waitForFunction(() => document.querySelector("[data-testid=wterm-demo]")?.textContent?.includes("opfs-fs + just-bash + wterm"))
+    await terminal.pressSequentially("echo hello")
+    await terminal.press("Enter")
+    await page.waitForTimeout(100)
+    await terminal.press("ArrowUp")
+    await terminal.press("Enter")
+    await page.waitForTimeout(100)
+    const historyOutput = await page.locator("[data-testid=wterm-demo]").innerText()
+    expect(historyOutput.match(/opfs:\/workspace\$ echo hello/g)?.length).toBe(2)
+    await terminal.pressSequentially("cat welcome.txt")
+    await terminal.press("Enter")
+    await page.waitForTimeout(100)
+    await terminal.pressSequentially("cd /")
+    await terminal.press("Enter")
+    await page.waitForTimeout(100)
+    await terminal.pressSequentially("pwd")
+    await terminal.press("Enter")
+    await page.waitForTimeout(300)
+    const output = await page.locator("[data-testid=wterm-demo]").innerText()
+    expect(output).toContain("hello")
+    expect(output).toContain("This file lives in OPFS.")
+    expect(output).not.toContain("This file lives in OPFS.\\n")
+    expect(output).toMatch(/\n\/\s*\n/)
+    await context.close()
+  } finally {
+    await wtermBrowser.close()
+  }
 })
 
-test("executes OPFS-backed commands in xterm.js", async () => {
+async function xtermIntegration(): Promise<void> {
   const activeServer = server
   if (!activeServer) throw new Error("Browser test setup failed.")
 
@@ -86,6 +89,8 @@ test("executes OPFS-backed commands in xterm.js", async () => {
     const terminal = page.locator("[data-testid=xterm-demo] textarea")
     await terminal.waitFor({ state: "visible" })
     await page.waitForFunction(() => document.querySelector("[data-testid=xterm-demo]")?.textContent?.includes("opfs-fs + just-bash + xterm.js"))
+    await terminal.focus()
+    await page.waitForTimeout(250)
     await terminal.pressSequentially("echo hello")
     await terminal.press("Enter")
     await page.waitForTimeout(100)
@@ -108,4 +113,4 @@ test("executes OPFS-backed commands in xterm.js", async () => {
   } finally {
     await xtermBrowser.close()
   }
-}, 15_000)
+}

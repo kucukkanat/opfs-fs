@@ -12,12 +12,73 @@ renderer dependency, not an `opfs-fs` dependency.
 npm install @kucukkanat/opfs-fs@github:kucukkanat/opfs-fs#main just-bash @xterm/xterm @xterm/addon-fit react react-dom
 ```
 
+## Complete integration
+
+```tsx
+import { useEffect, useRef } from "react"
+import { FitAddon } from "@xterm/addon-fit"
+import { Terminal } from "@xterm/xterm"
+import "@xterm/xterm/css/xterm.css"
+import {
+  attachJustBashTerminal,
+  type AttachedJustBashTerminal,
+} from "@kucukkanat/opfs-fs/just-bash"
+
+export function OpfsXterm() {
+  const host = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    const target = host.current
+    if (!target) return
+
+    const terminal = new Terminal({ cursorBlink: true, rows: 18 })
+    const fit = new FitAddon()
+    terminal.loadAddon(fit)
+    terminal.open(target)
+    fit.fit()
+
+    const resized = new ResizeObserver(() => fit.fit())
+    resized.observe(target)
+    let disposed = false
+    let shell: AttachedJustBashTerminal | undefined
+
+    void attachJustBashTerminal({
+      terminal: {
+        write: terminal.write.bind(terminal),
+        onData: terminal.onData.bind(terminal),
+      },
+      workspace: { name: "terminal", root: "/workspace" },
+      executionLimitProfile: "hardened",
+      banner: "Durable OPFS terminal",
+      initialize: async ({ workspace }) => {
+        await workspace.writeFile("/workspace/welcome.txt", "Hello from OPFS\\n")
+      },
+    }).then(
+      (attached) => {
+        shell = attached
+        if (disposed) shell.dispose()
+      },
+      (error: unknown) => terminal.write(`Unable to open OPFS: ${String(error)}\\r\\n`),
+    )
+
+    return () => {
+      disposed = true
+      resized.disconnect()
+      shell?.dispose()
+      terminal.dispose()
+    }
+  }, [])
+
+  return <div ref={host} style={{ minHeight: 360 }} />
+}
+```
+
 ## Editable live example
 
-The editor below is the executable source—not a second, illustrative version.
-It runs the exact `attachJustBashTerminal()` call it displays. Edit the
-workspace name, banner, initialization, or any other supported option, then run
-it to replace the terminal session. The playground injects only the xterm
+The complete example above is the renderer setup; the editable program below
+is its `attachJustBashTerminal()` call. It runs that exact program. Edit the
+workspace name, banner, initialization, or any other supported option, then
+run it to replace the terminal session. The playground injects only the xterm
 `terminal` port and the imported `attachJustBashTerminal` function.
 
 <XtermPlayground />

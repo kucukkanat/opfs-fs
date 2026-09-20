@@ -10,14 +10,62 @@ npm install @kucukkanat/opfs-fs just-bash @wterm/react @wterm/dom react react-do
 ```
 
 ```tsx
+import { useCallback, useEffect, useRef } from "react"
 import { Terminal, useTerminal } from "@wterm/react"
-import { Bash } from "just-bash/browser"
-import { openWorkspace } from "@kucukkanat/opfs-fs"
-import { createJustBashFileSystem } from "@kucukkanat/opfs-fs/just-bash"
+import {
+  attachJustBashTerminal,
+  type AttachedJustBashTerminal,
+  type TerminalPort,
+} from "@kucukkanat/opfs-fs/just-bash"
 
-// Create Bash with createJustBashFileSystem(workspace), then route wterm's
-// onData input to bash.exec(). The live demo below is the complete pattern.
+export function OpfsWterm() {
+  const { ref, write } = useTerminal()
+  const writer = useRef(write)
+  const listener = useRef<(data: string) => void>(() => {})
+  const shell = useRef<AttachedJustBashTerminal | null>(null)
+  writer.current = write
+
+  const terminal = useRef<TerminalPort>({
+    write: (value) => writer.current(value),
+    onData: (onData) => {
+      listener.current = onData
+      return { dispose: () => { listener.current = () => {} } }
+    },
+  })
+
+  const start = useCallback(() => {
+    if (shell.current) return
+    void attachJustBashTerminal({
+      terminal: terminal.current,
+      workspace: { name: "terminal", root: "/workspace" },
+      executionLimitProfile: "hardened",
+      initialize: async ({ workspace }) => {
+        await workspace.writeFile("/workspace/welcome.txt", "Hello from OPFS\\n")
+      },
+    }).then(
+      (attached) => { shell.current = attached },
+      (error: unknown) => writer.current(`Unable to open OPFS: ${String(error)}\\r\\n`),
+    )
+  }, [])
+
+  const onData = useCallback((data: string) => listener.current(data), [])
+  useEffect(() => () => shell.current?.dispose(), [])
+
+  return <Terminal
+    ref={ref}
+    cols={80}
+    rows={18}
+    autoResize
+    cursorBlink
+    theme="monokai"
+    onData={onData}
+    onReady={start}
+  />
+}
 ```
+
+`wterm` delivers input through a prop rather than an `onData()` subscription,
+so the small `TerminalPort` bridge above is the only renderer-specific code.
 
 <WtermDemo />
 
