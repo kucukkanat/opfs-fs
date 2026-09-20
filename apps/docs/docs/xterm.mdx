@@ -12,63 +12,19 @@ renderer dependency, not an `opfs-fs` dependency.
 npm install @kucukkanat/opfs-fs@github:kucukkanat/opfs-fs#main just-bash @xterm/xterm @xterm/addon-fit react react-dom
 ```
 
-```tsx
-import { useEffect, useRef } from "react"
-import { FitAddon } from "@xterm/addon-fit"
-import { Terminal } from "@xterm/xterm"
-import "@xterm/xterm/css/xterm.css"
-import {
-  attachJustBashTerminal,
-  type AttachedJustBashTerminal,
-} from "@kucukkanat/opfs-fs/just-bash"
+## Editable live example
 
-export function OpfsXterm() {
-  const host = useRef<HTMLDivElement>(null)
+The editor below is the executable source—not a second, illustrative version.
+It runs the exact `attachJustBashTerminal()` call it displays. Edit the
+workspace name, banner, initialization, or any other supported option, then run
+it to replace the terminal session. The playground injects only the xterm
+`terminal` port and the imported `attachJustBashTerminal` function.
 
-  useEffect(() => {
-    const target = host.current
-    if (!target) return
+<XtermPlayground />
 
-    const terminal = new Terminal({ cursorBlink: true, rows: 18 })
-    const fit = new FitAddon()
-    terminal.loadAddon(fit)
-    terminal.open(target)
-    fit.fit()
-
-    let shell: AttachedJustBashTerminal | undefined
-    void attachJustBashTerminal({
-      terminal: {
-        write: terminal.write.bind(terminal),
-        onData: terminal.onData.bind(terminal),
-      },
-      workspace: { name: "terminal", root: "/workspace" },
-      executionLimitProfile: "hardened",
-      banner: "Durable OPFS terminal",
-      initialize: async ({ workspace }) => {
-        await workspace.writeFile("/workspace/welcome.txt", "Hello from OPFS\\n")
-      },
-    }).then((attached) => { shell = attached })
-
-    return () => {
-      shell?.dispose()
-      terminal.dispose()
-    }
-  }, [])
-
-  return <div ref={host} />
-}
-```
-
-`terminal.onData` and `terminal.write` are the only renderer-specific glue. The
-returned `shell` exposes `workspace`, `bash`, `cwd`, and `execute(command)` when
-you need an escape hatch.
-
-## Live example
-
-<XtermDemo />
-
-Type `help`, `pwd`, `ls`, `cat welcome.txt`, or `printf hello > note.txt`.
-Reload, then `cat note.txt` to verify OPFS persistence.
+The returned `shell` exposes `workspace`, `bash`, `cwd`, and `execute(command)`
+when you need an escape hatch. Type `help`, `pwd`, `ls`, `cat welcome.txt`, or
+`printf hello > note.txt`; reload and `cat note.txt` to verify OPFS persistence.
 
 :::tip
 Use `createJustBashFileSystem()` and `createJustBashTerminalSession()` directly

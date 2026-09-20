@@ -96,6 +96,14 @@ test("executes OPFS-backed commands in xterm.js", async () => {
     expect(output).toContain("hello")
     expect(output).toContain("This file lives in OPFS.")
     expect(output).not.toContain("This file lives in OPFS.\\n")
+    const source = page.locator("[data-testid=xterm-source]")
+    await source.fill(`return attachJustBashTerminal({
+  terminal,
+  workspace: { name: "xterm-edited", root: "/workspace" },
+  banner: "Edited live snippet",
+})`)
+    await page.getByTestId("xterm-run").click()
+    await page.waitForFunction(() => document.querySelector("[data-testid=xterm-demo]")?.textContent?.includes("Edited live snippet"))
     await context.close()
   } finally {
     await xtermBrowser.close()
