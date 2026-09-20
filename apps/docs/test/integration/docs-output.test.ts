@@ -41,7 +41,8 @@ test("executes terminal commands and recalls command history", async () => {
   const activeBrowser = browser
   const activeServer = server
   if (!activeBrowser || !activeServer) throw new Error("Browser test setup failed.")
-  const page = await activeBrowser.newPage()
+  const context = await activeBrowser.newContext()
+  const page = await context.newPage()
   await page.goto(`${activeServer.url}opfs-fs/wterm/`)
   const terminal = page.locator("[data-testid=wterm-demo] textarea")
   await terminal.waitFor({ state: "visible" })
@@ -68,27 +69,35 @@ test("executes terminal commands and recalls command history", async () => {
   expect(output).toContain("This file lives in OPFS.")
   expect(output).not.toContain("This file lives in OPFS.\\n")
   expect(output).toMatch(/\n\/\s*\n/)
-  await page.close()
+  await context.close()
 })
 
 test("executes OPFS-backed commands in xterm.js", async () => {
-  const activeBrowser = browser
   const activeServer = server
-  if (!activeBrowser || !activeServer) throw new Error("Browser test setup failed.")
-  const page = await activeBrowser.newPage()
-  await page.goto(`${activeServer.url}opfs-fs/xterm/`)
-  const terminal = page.locator("[data-testid=xterm-demo] textarea")
-  await terminal.waitFor({ state: "visible" })
-  await page.waitForFunction(() => document.querySelector("[data-testid=xterm-demo]")?.textContent?.includes("opfs-fs + just-bash + xterm.js"))
-  await terminal.pressSequentially("echo hello")
-  await terminal.press("Enter")
-  await page.waitForTimeout(100)
-  await terminal.pressSequentially("cat welcome.txt")
-  await terminal.press("Enter")
-  await page.waitForTimeout(300)
-  const output = await page.locator("[data-testid=xterm-demo]").innerText()
-  expect(output).toContain("hello")
-  expect(output).toContain("This file lives in OPFS.")
-  expect(output).not.toContain("This file lives in OPFS.\\n")
-  await page.close()
+  if (!activeServer) throw new Error("Browser test setup failed.")
+
+  // xterm owns global browser resources. A separate process prevents a prior
+  // renderer from retaining OPFS/terminal state across this integration test.
+  const xtermBrowser = await chromium.launch({ executablePath: chrome, headless: true })
+  try {
+    const context = await xtermBrowser.newContext()
+    const page = await context.newPage()
+    await page.goto(`${activeServer.url}opfs-fs/xterm/`)
+    const terminal = page.locator("[data-testid=xterm-demo] textarea")
+    await terminal.waitFor({ state: "visible" })
+    await page.waitForFunction(() => document.querySelector("[data-testid=xterm-demo]")?.textContent?.includes("opfs-fs + just-bash + xterm.js"))
+    await terminal.pressSequentially("echo hello")
+    await terminal.press("Enter")
+    await page.waitForTimeout(100)
+    await terminal.pressSequentially("cat welcome.txt")
+    await terminal.press("Enter")
+    await page.waitForTimeout(300)
+    const output = await page.locator("[data-testid=xterm-demo]").innerText()
+    expect(output).toContain("hello")
+    expect(output).toContain("This file lives in OPFS.")
+    expect(output).not.toContain("This file lives in OPFS.\\n")
+    await context.close()
+  } finally {
+    await xtermBrowser.close()
+  }
 }, 15_000)

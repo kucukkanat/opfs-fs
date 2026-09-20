@@ -1,7 +1,5 @@
 import { useCallback, useRef } from "react"
-import { Bash } from "just-bash/browser"
-import { openWorkspace, type OpfsWorkspace } from "@kucukkanat/opfs-fs"
-import { createJustBashFileSystem, createJustBashTerminalSession, type JustBashTerminalSession } from "@kucukkanat/opfs-fs/just-bash"
+import { attachJustBashTerminal, type AttachedJustBashTerminal, type TerminalPort } from "@kucukkanat/opfs-fs/just-bash"
 import { demoWorkspaceName, formatError } from "./shared"
 
 type BashTerminalOptions = Readonly<{
@@ -10,33 +8,40 @@ type BashTerminalOptions = Readonly<{
   write: (value: string) => void
 }>
 
-/** Connects a documentation renderer to the public, renderer-neutral session adapter. */
+/** Bridges renderers with prop-based input APIs to the public terminal port. */
 export const useBashTerminal = ({ demo, renderer, write }: BashTerminalOptions) => {
-  const workspace = useRef<OpfsWorkspace | null>(null)
-  const session = useRef<JustBashTerminalSession | null>(null)
+  const writer = useRef(write)
+  writer.current = write
+  const listener = useRef<(data: string) => void>(() => {})
+  const attached = useRef<AttachedJustBashTerminal | null>(null)
+  const terminal = useRef<TerminalPort>({
+    write: (value) => writer.current(value),
+    onData: (onData) => {
+      listener.current = onData
+      return { dispose: () => { listener.current = () => {} } }
+    },
+  })
 
   const initialize = useCallback(async (): Promise<void> => {
-    if (session.current) return
-    write("Opening durable workspace…\r\n")
+    if (attached.current) return
+    writer.current("Opening durable workspace…\r\n")
     try {
-      const opened = await openWorkspace({ name: demoWorkspaceName(demo), root: "/workspace" })
-      workspace.current = opened
-      const bash = new Bash({ fs: createJustBashFileSystem(opened), cwd: "/workspace", executionLimitProfile: "hardened" })
-      session.current = createJustBashTerminalSession(bash, { cwd: "/workspace" })
-      await opened.writeFile("/workspace/welcome.txt", "This file lives in OPFS.\n")
-      write(`opfs-fs + just-bash + ${renderer}\r\nTry: help, pwd, ls, cat welcome.txt, or printf hello > note.txt\r\n`)
-      session.current.writePrompt(write)
+      attached.current = await attachJustBashTerminal({
+        terminal: terminal.current,
+        workspace: { name: demoWorkspaceName(demo), root: "/workspace" },
+        executionLimitProfile: "hardened",
+        banner: `opfs-fs + just-bash + ${renderer}\nTry: help, pwd, ls, cat welcome.txt, or printf hello > note.txt`,
+        initialize: async ({ workspace }) => workspace.writeFile("/workspace/welcome.txt", "This file lives in OPFS.\n"),
+      })
     } catch (error) {
-      write(`Unable to open OPFS: ${formatError(error)}\r\n`)
+      writer.current(`Unable to open OPFS: ${formatError(error)}\r\n`)
     }
-  }, [demo, renderer, write])
+  }, [demo, renderer])
 
-  const onData = useCallback((data: string): void => session.current?.handleInput(data, write), [write])
-
+  const onData = useCallback((data: string): void => listener.current(data), [])
   const close = useCallback(() => {
-    workspace.current?.close()
-    workspace.current = null
-    session.current = null
+    attached.current?.dispose()
+    attached.current = null
   }, [])
 
   return { close, initialize, onData }

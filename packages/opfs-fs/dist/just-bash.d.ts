@@ -1,5 +1,6 @@
-import { Bash, type IFileSystem } from "just-bash/browser";
-import type { OpfsWorkspace } from "./workspace.js";
+import { Bash, type BashOptions, type IFileSystem } from "just-bash/browser";
+import { type OpfsWorkspace } from "./workspace.js";
+import type { OpenWorkspaceOptions } from "./types.js";
 export type TerminalWriter = (value: string) => void;
 export type JustBashExecution = Awaited<ReturnType<InstanceType<typeof Bash>["exec"]>>;
 export type JustBashTerminalSession = Readonly<{
@@ -9,6 +10,32 @@ export type JustBashTerminalSession = Readonly<{
     handleInput: (data: string, write: TerminalWriter) => void;
     writePrompt: (write: TerminalWriter) => void;
 }>;
+export type TerminalPort = Readonly<{
+    write: TerminalWriter;
+    onData: (listener: (data: string) => void) => Readonly<{
+        dispose: () => void;
+    }>;
+}>;
+export type AttachJustBashTerminalOptions = Readonly<{
+    terminal: TerminalPort;
+    workspace: OpenWorkspaceOptions;
+    banner?: string;
+    prompt?: string | ((cwd: string) => string);
+    executionLimitProfile?: BashOptions["executionLimitProfile"];
+    initialize?: (context: Readonly<{
+        workspace: OpfsWorkspace;
+        bash: Bash;
+        session: JustBashTerminalSession;
+    }>) => Promise<void> | void;
+}>;
+export type AttachedJustBashTerminal = Readonly<{
+    workspace: OpfsWorkspace;
+    bash: Bash;
+    session: JustBashTerminalSession;
+    readonly cwd: string;
+    execute: JustBashTerminalSession["execute"];
+    dispose: () => void;
+}>;
 /** Exposes an OPFS workspace through just-bash's filesystem contract. */
 export declare const createJustBashFileSystem: (workspace: OpfsWorkspace) => IFileSystem;
 /**
@@ -17,5 +44,11 @@ export declare const createJustBashFileSystem: (workspace: OpfsWorkspace) => IFi
  */
 export declare const createJustBashTerminalSession: (bash: Bash, options?: Readonly<{
     cwd?: string;
+    prompt?: string | ((cwd: string) => string);
 }>) => JustBashTerminalSession;
+/**
+ * Attaches a durable OPFS-backed just-bash session to any terminal exposing
+ * write() and onData(). xterm.js and wterm both satisfy this small contract.
+ */
+export declare const attachJustBashTerminal: (options: AttachJustBashTerminalOptions) => Promise<AttachedJustBashTerminal>;
 //# sourceMappingURL=just-bash.d.ts.map

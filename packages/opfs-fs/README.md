@@ -44,13 +44,25 @@ exported archive with the browser's `Blob.stream()`.
 
 ## just-bash
 
+Use the filesystem adapter when you own the `Bash` lifecycle:
+
 ```ts
 import { Bash } from "just-bash/browser"
-import { createJustBashFileSystem, createJustBashTerminalSession } from "@kucukkanat/opfs-fs/just-bash"
+import { createJustBashFileSystem } from "@kucukkanat/opfs-fs/just-bash"
 
 const bash = new Bash({ fs: createJustBashFileSystem(fs), cwd: "/workspace" })
+```
 
-const session = createJustBashTerminalSession(bash, { cwd: "/workspace" })
-terminal.onData((data) => session.handleInput(data, (text) => terminal.write(text)))
-session.writePrompt((text) => terminal.write(text))
+For a terminal, the high-level adapter opens the workspace and owns the full
+shell lifecycle:
+
+```ts
+import { attachJustBashTerminal } from "@kucukkanat/opfs-fs/just-bash"
+
+const shell = await attachJustBashTerminal({
+  terminal: { write: terminal.write.bind(terminal), onData: terminal.onData.bind(terminal) },
+  workspace: { name: "terminal", root: "/workspace" },
+})
+
+shell.dispose()
 ```

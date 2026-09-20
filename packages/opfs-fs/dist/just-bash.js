@@ -1,3 +1,5 @@
+import { Bash } from "just-bash/browser";
+import { openWorkspace } from "./workspace.js";
 /** Exposes an OPFS workspace through just-bash's filesystem contract. */
 export const createJustBashFileSystem = (workspace) => workspace;
 const terminalText = (value) => value.replaceAll("\r\n", "\n").replaceAll("\n", "\r\n");
@@ -12,7 +14,7 @@ export const createJustBashTerminalSession = (bash, options = {}) => {
     let historyIndex = -1;
     let escapeSequence = "";
     let execution = Promise.resolve();
-    const prompt = () => `opfs:${cwd}$ `;
+    const prompt = () => typeof options.prompt === "function" ? options.prompt(cwd) : (options.prompt ?? "opfs:{cwd}$ ").replaceAll("{cwd}", cwd);
     const writePrompt = (write) => write(prompt());
     const replaceInput = (value, write) => {
         input = value;
@@ -106,5 +108,46 @@ export const createJustBashTerminalSession = (bash, options = {}) => {
         handleInput,
         writePrompt,
     };
+};
+/**
+ * Attaches a durable OPFS-backed just-bash session to any terminal exposing
+ * write() and onData(). xterm.js and wterm both satisfy this small contract.
+ */
+export const attachJustBashTerminal = async (options) => {
+    const workspace = await openWorkspace(options.workspace);
+    try {
+        const cwd = options.workspace.root ?? "/";
+        const bash = new Bash({
+            fs: createJustBashFileSystem(workspace),
+            cwd,
+            ...(options.executionLimitProfile === undefined ? {} : { executionLimitProfile: options.executionLimitProfile }),
+        });
+        const session = createJustBashTerminalSession(bash, { cwd, ...(options.prompt === undefined ? {} : { prompt: options.prompt }) });
+        await options.initialize?.({ workspace, bash, session });
+        const subscription = options.terminal.onData((data) => session.handleInput(data, options.terminal.write));
+        if (options.banner)
+            options.terminal.write(`${terminalText(options.banner)}${options.banner.endsWith("\n") ? "" : "\r\n"}`);
+        session.writePrompt(options.terminal.write);
+        let disposed = false;
+        const dispose = () => {
+            if (disposed)
+                return;
+            disposed = true;
+            subscription.dispose();
+            workspace.close();
+        };
+        return {
+            workspace,
+            bash,
+            session,
+            get cwd() { return session.cwd; },
+            execute: session.execute,
+            dispose,
+        };
+    }
+    catch (error) {
+        workspace.close();
+        throw error;
+    }
 };
 //# sourceMappingURL=just-bash.js.map

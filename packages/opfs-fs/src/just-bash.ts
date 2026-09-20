@@ -1,5 +1,6 @@
-import { Bash, type IFileSystem } from "just-bash/browser"
-import type { OpfsWorkspace } from "./workspace.js"
+import { Bash, type BashOptions, type IFileSystem } from "just-bash/browser"
+import { openWorkspace, type OpfsWorkspace } from "./workspace.js"
+import type { OpenWorkspaceOptions } from "./types.js"
 
 export type TerminalWriter = (value: string) => void
 export type JustBashExecution = Awaited<ReturnType<InstanceType<typeof Bash>["exec"]>>
@@ -12,6 +13,29 @@ export type JustBashTerminalSession = Readonly<{
   writePrompt: (write: TerminalWriter) => void
 }>
 
+export type TerminalPort = Readonly<{
+  write: TerminalWriter
+  onData: (listener: (data: string) => void) => Readonly<{ dispose: () => void }>
+}>
+
+export type AttachJustBashTerminalOptions = Readonly<{
+  terminal: TerminalPort
+  workspace: OpenWorkspaceOptions
+  banner?: string
+  prompt?: string | ((cwd: string) => string)
+  executionLimitProfile?: BashOptions["executionLimitProfile"]
+  initialize?: (context: Readonly<{ workspace: OpfsWorkspace; bash: Bash; session: JustBashTerminalSession }>) => Promise<void> | void
+}>
+
+export type AttachedJustBashTerminal = Readonly<{
+  workspace: OpfsWorkspace
+  bash: Bash
+  session: JustBashTerminalSession
+  readonly cwd: string
+  execute: JustBashTerminalSession["execute"]
+  dispose: () => void
+}>
+
 /** Exposes an OPFS workspace through just-bash's filesystem contract. */
 export const createJustBashFileSystem = (workspace: OpfsWorkspace): IFileSystem => workspace as unknown as IFileSystem
 
@@ -21,7 +45,7 @@ const terminalText = (value: string): string => value.replaceAll("\r\n", "\n").r
  * Adds interactive terminal behavior to a Bash instance without coupling it to
  * a renderer. Pass xterm.js, wterm, or another terminal's input to handleInput.
  */
-export const createJustBashTerminalSession = (bash: Bash, options: Readonly<{ cwd?: string }> = {}): JustBashTerminalSession => {
+export const createJustBashTerminalSession = (bash: Bash, options: Readonly<{ cwd?: string; prompt?: string | ((cwd: string) => string) }> = {}): JustBashTerminalSession => {
   let cwd = options.cwd ?? "/"
   let input = ""
   const history: string[] = []
@@ -29,7 +53,7 @@ export const createJustBashTerminalSession = (bash: Bash, options: Readonly<{ cw
   let escapeSequence = ""
   let execution = Promise.resolve()
 
-  const prompt = (): string => `opfs:${cwd}$ `
+  const prompt = (): string => typeof options.prompt === "function" ? options.prompt(cwd) : (options.prompt ?? "opfs:{cwd}$ ").replaceAll("{cwd}", cwd)
   const writePrompt = (write: TerminalWriter): void => write(prompt())
   const replaceInput = (value: string, write: TerminalWriter): void => {
     input = value
@@ -115,5 +139,44 @@ export const createJustBashTerminalSession = (bash: Bash, options: Readonly<{ cw
     execute,
     handleInput,
     writePrompt,
+  }
+}
+
+/**
+ * Attaches a durable OPFS-backed just-bash session to any terminal exposing
+ * write() and onData(). xterm.js and wterm both satisfy this small contract.
+ */
+export const attachJustBashTerminal = async (options: AttachJustBashTerminalOptions): Promise<AttachedJustBashTerminal> => {
+  const workspace = await openWorkspace(options.workspace)
+  try {
+    const cwd = options.workspace.root ?? "/"
+    const bash = new Bash({
+      fs: createJustBashFileSystem(workspace),
+      cwd,
+      ...(options.executionLimitProfile === undefined ? {} : { executionLimitProfile: options.executionLimitProfile }),
+    })
+    const session = createJustBashTerminalSession(bash, { cwd, ...(options.prompt === undefined ? {} : { prompt: options.prompt }) })
+    await options.initialize?.({ workspace, bash, session })
+    const subscription = options.terminal.onData((data) => session.handleInput(data, options.terminal.write))
+    if (options.banner) options.terminal.write(`${terminalText(options.banner)}${options.banner.endsWith("\n") ? "" : "\r\n"}`)
+    session.writePrompt(options.terminal.write)
+    let disposed = false
+    const dispose = (): void => {
+      if (disposed) return
+      disposed = true
+      subscription.dispose()
+      workspace.close()
+    }
+    return {
+      workspace,
+      bash,
+      session,
+      get cwd(): string { return session.cwd },
+      execute: session.execute,
+      dispose,
+    }
+  } catch (error) {
+    workspace.close()
+    throw error
   }
 }
