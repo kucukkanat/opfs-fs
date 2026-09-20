@@ -9,11 +9,34 @@ description: Durable, transactional workspaces in the browser’s Origin Private
 OPFS data belongs to the current origin. Use the explicit export/reset APIs for user-controlled portability and deletion.
 :::
 
-## Install
+## Install from GitHub
 
-```package-install
-npm install @kucukkanat/opfs-fs
+The repository commits the package's ESM build and exposes it from the Git
+dependency root, so install it under its public scoped name:
+
+```sh
+npm install @kucukkanat/opfs-fs@github:kucukkanat/opfs-fs#main
 ```
+
+The `#main` form follows the latest build. Pin a commit for reproducible builds:
+
+```json
+{
+  "dependencies": {
+    "@kucukkanat/opfs-fs": "github:kucukkanat/opfs-fs#9517c13"
+  }
+}
+```
+
+With Bun, use the same dependency specifier:
+
+```sh
+bun add @kucukkanat/opfs-fs@github:kucukkanat/opfs-fs#main
+```
+
+The import paths are the same for a Git dependency and an npm registry release.
+The monorepo layout is an implementation detail; consumers only use the public
+package and documented subpaths.
 
 ## Open a workspace
 

@@ -5,8 +5,18 @@ description: Plug an OPFS workspace straight into just-bash.
 
 `@kucukkanat/opfs-fs/just-bash` is a zero-runtime adapter: the workspace already satisfies `just-bash`’s asynchronous filesystem contract.
 
-```package-install
-npm install @kucukkanat/opfs-fs just-bash
+Install the GitHub package under its scoped name and add `just-bash`, which is
+an optional peer dependency of the core package:
+
+```sh
+npm install @kucukkanat/opfs-fs@github:kucukkanat/opfs-fs#main just-bash
+```
+
+For reproducible builds, replace `#main` with a full commit SHA. The adapter's
+import path stays the same:
+
+```ts
+import { createJustBashFileSystem } from "@kucukkanat/opfs-fs/just-bash"
 ```
 
 ```ts
