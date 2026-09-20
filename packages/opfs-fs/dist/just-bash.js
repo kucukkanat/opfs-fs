@@ -1,8 +1,62 @@
 import { Bash } from "just-bash/browser";
 import { openWorkspace } from "./workspace.js";
+import { OpfsFsError } from "./errors.js";
+const bashEncoding = (options) => typeof options === "string" ? options : (options?.encoding ?? undefined);
 /** Exposes an OPFS workspace through just-bash's filesystem contract. */
-export const createJustBashFileSystem = (workspace) => workspace;
+export const createJustBashFileSystem = (workspace) => ({
+    readFile: (path, options) => workspace.readFile(path, bashEncoding(options)),
+    readFileBuffer: (path) => workspace.readFileBuffer(path),
+    writeFile: (path, content, options) => workspace.writeFile(path, content, bashEncoding(options)),
+    appendFile: (path, content, options) => workspace.appendFile(path, content, bashEncoding(options)),
+    exists: (path) => workspace.exists(path),
+    stat: (path) => workspace.stat(path),
+    lstat: (path) => workspace.lstat(path),
+    mkdir: (path, options) => workspace.mkdir(path, options),
+    readdir: (path) => workspace.readdir(path),
+    readdirWithFileTypes: (path) => workspace.readdirWithFileTypes(path),
+    rm: (path, options) => workspace.rm(path, options),
+    cp: (source, destination, options) => workspace.cp(source, destination, options),
+    mv: (source, destination) => workspace.mv(source, destination),
+    resolvePath: (base, path) => workspace.resolvePath(base, path),
+    getAllPaths: () => workspace.getAllPaths(),
+    chmod: (path, mode) => workspace.chmod(path, mode),
+    symlink: (target, path) => workspace.symlink(target, path),
+    link: (existingPath, path) => workspace.link(existingPath, path),
+    readlink: (path) => workspace.readlink(path),
+    realpath: (path) => workspace.realpath(path),
+    utimes: (path, atime, mtime) => workspace.utimes(path, atime, mtime),
+});
 const terminalText = (value) => value.replaceAll("\r\n", "\n").replaceAll("\n", "\r\n");
+const cwdCaptures = new WeakMap();
+const cwdCaptureFor = (bash) => {
+    const existing = cwdCaptures.get(bash);
+    if (existing)
+        return existing;
+    const capture = { nextScript: false, cwd: undefined };
+    const command = `__opfs_cwd_${crypto.randomUUID().replaceAll("-", "")}`;
+    const statements = bash.transform(`${command} "$?"`).ast.statements;
+    bash.registerCommand({
+        name: command,
+        execute: async (args, context) => {
+            capture.cwd = context.cwd;
+            return { stdout: "", stderr: "", exitCode: Number(args[0] ?? 0) };
+        },
+    });
+    bash.registerTransformPlugin({
+        name: command,
+        transform: ({ ast }) => {
+            if (!capture.nextScript)
+                return { ast };
+            capture.nextScript = false;
+            // Capture interpreter state, not the assignable PWD variable. Only instrument the
+            // outer script; child shells must not move the terminal's working directory.
+            return { ast: { ...ast, statements: [...ast.statements, ...statements] } };
+        },
+    });
+    // Bash cannot unregister plugins. Reuse one capture that holds no session references.
+    cwdCaptures.set(bash, capture);
+    return capture;
+};
 /**
  * Adds interactive terminal behavior to a Bash instance without coupling it to
  * a renderer. Pass xterm.js, wterm, or another terminal's input to handleInput.
@@ -14,35 +68,75 @@ export const createJustBashTerminalSession = (bash, options = {}) => {
     let historyIndex = -1;
     let escapeSequence = "";
     let execution = Promise.resolve();
-    const prompt = () => typeof options.prompt === "function" ? options.prompt(cwd) : (options.prompt ?? "opfs:{cwd}$ ").replaceAll("{cwd}", cwd);
-    const writePrompt = (write) => write(prompt());
+    let disposed = false;
+    const pending = new Set();
+    const capture = cwdCaptureFor(bash);
+    const prompt = () => typeof options.prompt === "function"
+        ? options.prompt(cwd)
+        : (options.prompt ?? "opfs:{cwd}$ ").replaceAll("{cwd}", cwd);
+    const writePrompt = (write) => {
+        if (!disposed)
+            write(prompt());
+    };
     const replaceInput = (value, write) => {
         input = value;
         write(`\r\x1b[2K${prompt()}${value}`);
     };
-    const execute = async (command) => {
-        // Bash.exec scopes cwd to one invocation; promote only standalone cd to session state.
-        const standaloneCd = /^cd(?:\s+(?:-L|-P))?(?:\s+[^;&|]+)?\s*$/.test(command);
-        const result = await bash.exec(standaloneCd ? `${command} && pwd` : command, { cwd });
-        if (!standaloneCd || result.exitCode !== 0)
-            return result;
-        const lines = result.stdout.replaceAll("\r\n", "\n").split("\n");
-        if (lines.at(-1) === "")
-            lines.pop();
-        const nextCwd = lines.pop();
-        if (!nextCwd?.startsWith("/"))
-            return result;
-        cwd = nextCwd;
-        return { ...result, stdout: lines.length === 0 ? "" : `${lines.join("\n")}\n` };
+    const execute = (command, executionOptions = {}) => {
+        if (disposed)
+            return Promise.reject(new OpfsFsError("CLOSED", "This terminal session has been disposed."));
+        const controller = new AbortController();
+        pending.add(controller);
+        const signal = executionOptions.signal === undefined
+            ? controller.signal
+            : AbortSignal.any([controller.signal, executionOptions.signal]);
+        const result = execution
+            .then(async () => {
+            signal.throwIfAborted();
+            capture.cwd = undefined;
+            capture.nextScript = true;
+            try {
+                const result = await bash.exec(command, { cwd, signal });
+                if (capture.cwd !== undefined)
+                    cwd = capture.cwd;
+                return result;
+            }
+            finally {
+                capture.nextScript = false;
+            }
+        })
+            .finally(() => {
+            pending.delete(controller);
+        });
+        // A rejected execution must not poison the queue; its caller still receives the rejection.
+        execution = result.then(() => undefined, () => undefined);
+        return result;
+    };
+    const dispose = () => {
+        disposed = true;
+        for (const controller of pending)
+            controller.abort();
+        return execution;
     };
     const run = async (command, write) => {
-        const result = await execute(command);
-        if (result.stdout)
-            write(terminalText(result.stdout));
-        if (result.stderr)
-            write(terminalText(result.stderr));
+        try {
+            const result = await execute(command);
+            if (!disposed && result.stdout)
+                write(terminalText(result.stdout));
+            if (!disposed && result.stderr)
+                write(terminalText(result.stderr));
+        }
+        catch (error) {
+            if (!disposed && !(error instanceof Error && error.name === "AbortError"))
+                write(`${error instanceof Error ? error.message : "An unknown error occurred."}\r\n`);
+        }
+        finally {
+            writePrompt(write);
+        }
     };
     const handleInput = (data, write) => {
+        if (disposed)
+            return;
         for (const character of data) {
             if (escapeSequence) {
                 escapeSequence += character;
@@ -57,7 +151,7 @@ export const createJustBashTerminalSession = (bash, options = {}) => {
                 else if (escapeSequence === "\u001b[B") {
                     const next = historyIndex + 1;
                     historyIndex = next >= history.length ? -1 : next;
-                    replaceInput(historyIndex < 0 ? "" : history[historyIndex] ?? "", write);
+                    replaceInput(historyIndex < 0 ? "" : (history[historyIndex] ?? ""), write);
                     escapeSequence = "";
                 }
                 else if (escapeSequence.length > 2 && /[A-Za-z~]/.test(character)) {
@@ -76,10 +170,7 @@ export const createJustBashTerminalSession = (bash, options = {}) => {
                     history.push(command);
                 historyIndex = -1;
                 write("\r\n");
-                execution = execution
-                    .then(() => run(command, write))
-                    .catch((error) => write(`${error instanceof Error ? error.message : "An unknown error occurred."}\r\n`))
-                    .finally(() => writePrompt(write));
+                void run(command, write);
             }
             else if (character === "\u007f") {
                 if (input) {
@@ -89,10 +180,14 @@ export const createJustBashTerminalSession = (bash, options = {}) => {
                 }
             }
             else if (character === "\u0003") {
+                const executing = pending.size > 0;
+                for (const controller of pending)
+                    controller.abort();
                 input = "";
                 historyIndex = -1;
                 write("^C\r\n");
-                writePrompt(write);
+                if (!executing)
+                    writePrompt(write);
             }
             else if (character >= " ") {
                 input += character;
@@ -102,9 +197,14 @@ export const createJustBashTerminalSession = (bash, options = {}) => {
         }
     };
     return {
-        get cwd() { return cwd; },
-        get history() { return history.slice(); },
+        get cwd() {
+            return cwd;
+        },
+        get history() {
+            return history.slice();
+        },
         execute,
+        dispose,
         handleInput,
         writePrompt,
     };
@@ -114,39 +214,62 @@ export const createJustBashTerminalSession = (bash, options = {}) => {
  * write() and onData(). xterm.js and wterm both satisfy this small contract.
  */
 export const attachJustBashTerminal = async (options) => {
-    const workspace = await openWorkspace(options.workspace);
+    const injected = "instance" in options.workspace ? options.workspace : undefined;
+    const workspace = "instance" in options.workspace ? options.workspace.instance : await openWorkspace(options.workspace);
+    const owned = injected === undefined || injected.ownership === "owned";
+    let session;
+    let subscription;
+    let disposed = false;
+    const write = (value) => {
+        if (!disposed)
+            options.terminal.write(value);
+    };
     try {
-        const cwd = options.workspace.root ?? "/";
+        const cwd = workspace.root;
         const bash = new Bash({
             fs: createJustBashFileSystem(workspace),
             cwd,
             ...(options.executionLimitProfile === undefined ? {} : { executionLimitProfile: options.executionLimitProfile }),
         });
-        const session = createJustBashTerminalSession(bash, { cwd, ...(options.prompt === undefined ? {} : { prompt: options.prompt }) });
-        await options.initialize?.({ workspace, bash, session });
-        const subscription = options.terminal.onData((data) => session.handleInput(data, options.terminal.write));
+        const activeSession = createJustBashTerminalSession(bash, {
+            cwd,
+            ...(options.prompt === undefined ? {} : { prompt: options.prompt }),
+        });
+        session = activeSession;
+        await options.initialize?.({ workspace, bash, session: activeSession });
+        subscription = options.terminal.onData((data) => activeSession.handleInput(data, write));
         if (options.banner)
-            options.terminal.write(`${terminalText(options.banner)}${options.banner.endsWith("\n") ? "" : "\r\n"}`);
-        session.writePrompt(options.terminal.write);
-        let disposed = false;
+            write(`${terminalText(options.banner)}${options.banner.endsWith("\n") ? "" : "\r\n"}`);
+        activeSession.writePrompt(write);
+        let disposal;
         const dispose = () => {
-            if (disposed)
-                return;
+            if (disposal)
+                return disposal;
             disposed = true;
-            subscription.dispose();
-            workspace.close();
+            subscription?.dispose();
+            disposal = activeSession.dispose().then(() => {
+                if (owned)
+                    workspace.close();
+            });
+            return disposal;
         };
         return {
             workspace,
             bash,
-            session,
-            get cwd() { return session.cwd; },
-            execute: session.execute,
+            session: activeSession,
+            get cwd() {
+                return activeSession.cwd;
+            },
+            execute: activeSession.execute,
             dispose,
         };
     }
     catch (error) {
-        workspace.close();
+        disposed = true;
+        subscription?.dispose();
+        await session?.dispose();
+        if (owned)
+            workspace.close();
         throw error;
     }
 };

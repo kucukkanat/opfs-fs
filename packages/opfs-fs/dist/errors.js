@@ -1,9 +1,16 @@
+/** Stable error codes and optional context; inspect cause for the original storage failure. */
 export class OpfsFsError extends Error {
     code;
+    operation;
+    path;
+    workspace;
     constructor(code, message, options) {
         super(message, options);
         this.name = "OpfsFsError";
         this.code = code;
+        this.operation = options?.operation;
+        this.path = options?.path;
+        this.workspace = options?.workspace;
     }
 }
 export class CapabilityError extends OpfsFsError {
@@ -30,5 +37,5 @@ export class QuotaExceededError extends OpfsFsError {
         this.name = "QuotaExceededError";
     }
 }
-export const posixError = (code, message) => new OpfsFsError(code, message);
+export const posixError = (code, message, options) => new OpfsFsError(code, message, options);
 //# sourceMappingURL=errors.js.map

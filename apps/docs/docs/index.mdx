@@ -3,7 +3,15 @@ title: opfs-fs
 description: Durable, transactional workspaces in the browser’s Origin Private File System.
 ---
 
-`opfs-fs` gives browser applications an asynchronous POSIX-like workspace with durable commits, real hard links and symlinks, plus a first-class `just-bash` integration.
+Give browser agents and local-first applications a persistent workspace. Write files, run `just-bash` commands against the same tree, and reopen your project after a reload. Transactions group related edits; TAR export makes the files portable.
+
+## Try it in your browser
+
+Edit this file, save it, then reload the page. The editor restores the saved content from OPFS without a server.
+
+<WorkspaceDemo />
+
+Prefer a shell? Open the [editable xterm.js playground](/opfs-fs/xterm/#editable-live-example), or follow the [browser-agent recipes](/opfs-fs/agents/).
 
 :::warning
 OPFS data belongs to the current origin. Use the explicit export/reset APIs for user-controlled portability and deletion.
@@ -62,8 +70,25 @@ await fs.transaction(async (tx) => {
 
 For a single browser application flow covering files, bytes, metadata, links, transactions, archive recovery, storage, typed errors, and `just-bash`, see the [complete example](/opfs-fs/complete-example/).
 
-## Try it
+## Choose your integration
 
-<WorkspaceDemo />
+- [React lifecycle](/opfs-fs/react/): open on the client and dispose safely.
+- [just-bash](/opfs-fs/just-bash/), [xterm.js](/opfs-fs/xterm/) and [wterm](/opfs-fs/wterm/): execute commands and render a terminal.
+- [Browser agents](/opfs-fs/agents/): connect AI SDK tools and fx.sh host tools to persisted files.
+- [API reference](/opfs-fs/api/) and [operations](/opfs-fs/lifecycle/): understand filesystem semantics, storage limits and recovery.
 
-The demo uses a unique OPFS workspace per browser profile. Reload it to prove the workspace survives application state.
+The demo uses a named workspace unique to this browser profile and origin. Browser storage can still be cleared or evicted; export important work. See [environment requirements](/opfs-fs/lifecycle/#environment-requirements) before shipping.
+
+
+## Run the starter locally
+
+Clone the repository and run its self-contained browser example:
+
+```sh
+git clone https://github.com/kucukkanat/opfs-fs.git
+cd opfs-fs
+bun install
+bun run example
+```
+
+Open the localhost URL printed by the command. The [browser-agent example source](https://github.com/kucukkanat/opfs-fs/tree/main/examples/browser-agent) includes the browser bundler configuration; use it as a starting point for your own project.

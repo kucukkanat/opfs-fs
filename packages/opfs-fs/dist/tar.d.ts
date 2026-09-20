@@ -3,7 +3,7 @@ export type TarEntry = Readonly<{
     data: Uint8Array;
     mode: number;
     mtime: Date;
-    type: "file" | "directory" | "symlink";
+    type: "file" | "directory" | "symlink" | "hardlink";
     linkTarget?: string;
 }>;
 export declare const encodeTar: (entries: readonly TarEntry[]) => Uint8Array;

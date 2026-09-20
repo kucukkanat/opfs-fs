@@ -12,5 +12,18 @@ export default function WtermDemo() {
 
   useEffect(() => close, [close])
 
-  return <div data-testid="wterm-demo" style={{ minHeight: 360 }}><Terminal ref={ref} cols={80} rows={18} autoResize theme="monokai" cursorBlink onReady={initialize} onData={onData} /></div>
+  return (
+    <div data-testid="wterm-demo" style={{ minHeight: 360 }}>
+      <Terminal
+        ref={ref}
+        cols={80}
+        rows={18}
+        autoResize
+        theme="monokai"
+        cursorBlink
+        onReady={initialize}
+        onData={onData}
+      />
+    </div>
+  )
 }

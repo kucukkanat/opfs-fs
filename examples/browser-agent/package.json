@@ -1,0 +1,17 @@
+{
+  "name": "@kucukkanat/opfs-fs-browser-agent",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && bun run build.ts",
+    "start": "bun run server.ts",
+    "test:e2e": "bun test test"
+  },
+  "dependencies": {
+    "@kucukkanat/opfs-fs": "workspace:*",
+    "libfx": "0.0.10"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.56.1"
+  }
+}

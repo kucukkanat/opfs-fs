@@ -3,7 +3,20 @@
   "version": "0.1.0-next.0",
   "description": "A durable, transactional POSIX-like filesystem for the browser's OPFS.",
   "type": "module",
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "homepage": "https://kucukkanat.github.io/opfs-fs/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kucukkanat/opfs-fs.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kucukkanat/opfs-fs/issues"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -16,23 +29,50 @@
     "./just-bash": {
       "types": "./dist/just-bash.d.ts",
       "import": "./dist/just-bash.js"
+    },
+    "./fx": {
+      "types": "./dist/fx.d.ts",
+      "import": "./dist/fx.js"
+    },
+    "./browser-zlib": {
+      "types": "./dist/browser-zlib.d.ts",
+      "import": "./dist/browser-zlib.js"
     }
   },
   "peerDependencies": {
-    "just-bash": "^3.4.2"
+    "just-bash": "^3.4.2",
+    "fflate": "^0.8.3",
+    "buffer": "^6.0.3"
   },
   "peerDependenciesMeta": {
-    "just-bash": { "optional": true }
+    "just-bash": {
+      "optional": true
+    },
+    "fflate": {
+      "optional": true
+    },
+    "buffer": {
+      "optional": true
+    }
   },
   "devDependencies": {
+    "buffer": "6.0.3",
+    "fflate": "0.8.3",
     "just-bash": "^3.4.2",
+    "libfx": "0.0.10",
     "playwright-core": "^1.56.1"
   },
   "scripts": {
-    "build": "bunx tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json",
     "test": "bun test test/unit",
-    "test:integration": "bun run build && bun test test/integration"
+    "test:integration": "bun run build && bun test test/integration",
+    "bench": "bun run build && bun bench/workspace.ts"
   },
-  "keywords": ["opfs", "filesystem", "browser", "storage"],
+  "keywords": [
+    "opfs",
+    "filesystem",
+    "browser",
+    "storage"
+  ],
   "license": "MIT"
 }

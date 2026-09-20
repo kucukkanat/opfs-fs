@@ -6,20 +6,25 @@
     "dev": "blume dev",
     "build": "blume build",
     "test": "blume check",
-    "test:integration": "bun run build && bun test test/integration"
+    "test:integration": "bun run build && bun test test/integration",
+    "test:e2e": "bun run build && bun test test/e2e"
   },
   "dependencies": {
-    "@kucukkanat/opfs-fs": "file:../../packages/opfs-fs",
+    "@kucukkanat/opfs-fs": "workspace:*",
     "@wterm/dom": "^0.5.0",
     "@wterm/react": "^0.5.0",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
     "blume": "^1.7.1",
+    "buffer": "6.0.3",
+    "fflate": "0.8.3",
     "just-bash": "^3.4.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
     "playwright-core": "^1.56.1"
   }
 }

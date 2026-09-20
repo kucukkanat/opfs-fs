@@ -1,10 +1,13 @@
 {
   "$schema": "https://unpkg.com/@changesets/config@3.1.1/schema.json",
-  "changelog": false,
+  "changelog": "@changesets/cli/changelog",
   "commit": false,
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
   "ignore": [],
-  "snapshot": { "useCalculatedVersion": true, "prereleaseTemplate": "{tag}-{commit}-{datetime}" }
+  "snapshot": {
+    "useCalculatedVersion": true,
+    "prereleaseTemplate": "{tag}-{commit}-{datetime}"
+  }
 }

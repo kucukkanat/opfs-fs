@@ -14,22 +14,59 @@
     "./just-bash": {
       "types": "./packages/opfs-fs/dist/just-bash.d.ts",
       "import": "./packages/opfs-fs/dist/just-bash.js"
+    },
+    "./fx": {
+      "types": "./packages/opfs-fs/dist/fx.d.ts",
+      "import": "./packages/opfs-fs/dist/fx.js"
+    },
+    "./browser-zlib": {
+      "types": "./packages/opfs-fs/dist/browser-zlib.d.ts",
+      "import": "./packages/opfs-fs/dist/browser-zlib.js"
     }
   },
   "peerDependencies": {
-    "just-bash": "^3.4.2"
+    "just-bash": "^3.4.2",
+    "fflate": "^0.8.3",
+    "buffer": "^6.0.3"
   },
   "peerDependenciesMeta": {
-    "just-bash": { "optional": true }
+    "just-bash": {
+      "optional": true
+    },
+    "fflate": {
+      "optional": true
+    },
+    "buffer": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14",
+    "@changesets/cli": "^2.29.8",
+    "@types/bun": "1.4.2",
+    "typescript": "7.0.2"
   },
   "packageManager": "bun@1.3.14",
-  "workspaces": ["packages/*", "apps/*", "examples/*"],
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "examples/*"
+  ],
   "scripts": {
     "build": "bun run --filter '*' build",
     "test": "bun run --filter '*' test",
     "test:integration": "bun run --filter '*' test:integration",
     "docs:dev": "bun run --filter='@kucukkanat/opfs-fs' build && bun run --filter='@kucukkanat/opfs-fs-docs' dev",
     "docs:build": "bun run --filter='@kucukkanat/opfs-fs' build && bun run --filter='@kucukkanat/opfs-fs-docs' build",
-    "check": "bun run build && bun run test"
+    "check": "bun run lint && bun run format:check && bun run build && bun run test",
+    "version-packages": "changeset version",
+    "release": "bun run build && changeset publish",
+    "lint": "biome lint .",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "typecheck": "tsc -p packages/opfs-fs/tsconfig.json --noEmit",
+    "test:e2e": "bun run --filter \"*\" test:e2e",
+    "test:package": "bun test packages/opfs-fs/test/distribution",
+    "example": "bun run --filter=@kucukkanat/opfs-fs build && bun run --cwd examples/browser-agent start"
   }
 }

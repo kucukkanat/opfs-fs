@@ -12,9 +12,12 @@ renderer dependency, not an `opfs-fs` dependency.
 npm install @kucukkanat/opfs-fs@github:kucukkanat/opfs-fs#main just-bash @xterm/xterm @xterm/addon-fit react react-dom
 ```
 
+Apply the [browser compression alias](/opfs-fs/just-bash/#browser-bundlers-and-compression) before running this example.
+
 ## Complete integration
 
 ```tsx
+import { installBrowserBuffer } from "@kucukkanat/opfs-fs/browser-zlib"
 import { useEffect, useRef } from "react"
 import { FitAddon } from "@xterm/addon-fit"
 import { Terminal } from "@xterm/xterm"
@@ -28,10 +31,11 @@ export function OpfsXterm() {
   const host = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
+    installBrowserBuffer()
     const target = host.current
     if (!target) return
 
-    const terminal = new Terminal({ cursorBlink: true, rows: 18 })
+    const terminal = new Terminal({ cursorBlink: true, screenReaderMode: true, rows: 18 })
     const fit = new FitAddon()
     terminal.loadAddon(fit)
     terminal.open(target)
@@ -41,30 +45,33 @@ export function OpfsXterm() {
     resized.observe(target)
     let disposed = false
     let shell: AttachedJustBashTerminal | undefined
+    const close = (session: AttachedJustBashTerminal) => {
+      void Promise.resolve(session.dispose()).catch(console.error)
+    }
 
     void attachJustBashTerminal({
       terminal: {
-        write: terminal.write.bind(terminal),
-        onData: terminal.onData.bind(terminal),
+        write: (value) => { if (!disposed) terminal.write(value) },
+        onData: (callback) => disposed ? { dispose: () => {} } : terminal.onData(callback),
       },
       workspace: { name: "terminal", root: "/workspace" },
       executionLimitProfile: "hardened",
       banner: "Durable OPFS terminal",
       initialize: async ({ workspace }) => {
-        await workspace.writeFile("/workspace/welcome.txt", "Hello from OPFS\\n")
+        await workspace.writeFile("/workspace/welcome.txt", "Hello from OPFS\n")
       },
     }).then(
       (attached) => {
         shell = attached
-        if (disposed) shell.dispose()
+        if (disposed) close(shell)
       },
-      (error: unknown) => terminal.write(`Unable to open OPFS: ${String(error)}\\r\\n`),
+      (error: unknown) => { if (!disposed) terminal.write(`Unable to open OPFS: ${String(error)}\r\n`) },
     )
 
     return () => {
       disposed = true
       resized.disconnect()
-      shell?.dispose()
+      if (shell) close(shell)
       terminal.dispose()
     }
   }, [])

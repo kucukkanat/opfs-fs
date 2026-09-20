@@ -1,0 +1,95 @@
+---
+title: API reference
+description: The public filesystem contract, transaction boundaries, and Node compatibility differences.
+---
+
+## Workspace identity and paths
+
+```ts
+import { openWorkspace } from "@kucukkanat/opfs-fs"
+
+const fs = await openWorkspace({ name: "project-42", root: "/workspace" })
+try {
+  await fs.writeFile("/workspace/readme.txt", "Hello\n")
+  console.log(await fs.readFile("/workspace/readme.txt"))
+} finally {
+  fs.close()
+}
+```
+
+`name` identifies storage within the current origin. Use a stable name to reopen the same files. Names contain 1–128 letters, numbers, dots, underscores or hyphens, beginning with a letter or number. `root` defaults to `/`; it is the initial directory and archive root, **not an access-control boundary**. The named filesystem can also contain paths outside that directory. On reopening, the requested root must already be a directory; choosing a different root does not create it. Prefer explicit absolute paths. `resolvePath(base, path)` normalizes a path without checking whether it exists.
+
+## Files and directories
+
+| Operation | Result and behavior |
+| --- | --- |
+| `readFile(path, encoding?)` | `Promise<string>`; UTF-8 by default. Also accepts `{ encoding }`. |
+| `readText(path)` | Explicit UTF-8 text alias for `readFile(path)`. |
+| `readBytes(path)` | Explicit byte-array alias for `readFileBuffer(path)`. |
+| `readFileBuffer(path)` | `Promise<Uint8Array>`; raw bytes without Node's `Buffer`. |
+| `readFileBytes(path)` | Legacy binary **string**, not a byte array. Prefer `readFileBuffer()`. |
+| `writeFile(path, textOrBytes, options?)` | Creates or replaces a file. Parent directories must exist. Options include `encoding` and `mode`. |
+| `appendFile(path, textOrBytes, options?)` | Appends bytes, creating a missing file. |
+| `mkdir(path, { recursive? })` | Creates a directory; recursive mode creates missing parents. |
+| `readdir(path)` | Entry names, not full paths. |
+| `readdirWithFileTypes(path)` | Entries with boolean `isFile`, `isDirectory`, and `isSymbolicLink` fields. |
+| `exists(path)` | Existence check; do not use it as a concurrency guard before writing. |
+| `rm(path, { recursive?, force? })` | Removes an entry. Recursive removal must be explicit. |
+| `cp(source, destination, { recursive? })` | Copies files or a directory tree. |
+| `mv(source, destination)` | Moves/renames an entry. |
+| `getAllPaths()` | Synchronous local snapshot; use an asynchronous read to refresh after another context writes. |
+
+Text encodings are `utf8`, `utf-8`, `ascii`, `binary`, `latin1`, `base64`, and `hex`. For binary application data use `Uint8Array`; no filesystem streaming API is exposed. Large writes and archives require memory proportional to their content.
+
+## Metadata and links
+
+`stat(path)` follows symbolic links; `lstat(path)` describes the link itself. Both return boolean kind flags, `mode`, byte `size`, `mtime: Date`, and inode `identity`. Flags are properties, unlike Node's `stat.isFile()` methods.
+
+`symlink(target, path)` stores the target text. `readlink(path)` retrieves that text; `realpath(path)` resolves it. `link(existingPath, path)` creates a hard link to a regular file. `chmod(path, mode)` stores metadata; it does not enforce Unix process permissions. `utimes(path, atime, mtime)` currently stores **mtime only**.
+
+## Transactions
+
+```ts
+await fs.transaction(async (tx) => {
+  await tx.mkdir("/workspace/src", { recursive: true })
+  await tx.writeFile("/workspace/src/main.ts", "export const answer = 42\n")
+  await tx.writeFile("/workspace/package.json", '{"type":"module"}\n')
+})
+```
+
+Each standalone mutation commits independently. Use the callback's `tx` for every operation in a group. Operations on `tx` are serialized in invocation order and drained before commit; still await them to handle their results. Do not retain `tx` afterward: escaped handles reject. Any failed operation aborts the group, even if the callback catches its rejection. Throwing from the callback also rejects the group. **Do not await outer `fs` writes inside this callback:** they wait for the lock that the transaction already owns. Keep network/model calls outside the transaction to avoid holding a cross-context write lock while waiting for them.
+
+## Lifecycle, portability and storage
+
+| API | Purpose |
+| --- | --- |
+| `exportArchive({ format: "tar" })` | A `Blob` containing the configured root tree. |
+| `importArchive(blobOrBytes)` | Imports TAR entries as one transaction. Use an empty workspace for replacement rather than assuming merge conflict behavior. |
+| `reset()` | Destructively resets the named filesystem. Obtain user confirmation and export first when appropriate. |
+| `storage.estimate()` | Browser-reported usage/quota for the **origin**, not just this workspace. |
+| `storage.requestPersistence()` | Requests browser persistence; resolves to a boolean and may be denied. |
+| `close()` | Releases the handle; does not delete its files. Finish in-flight work before closing. |
+
+Exports preserve file bytes, directory structure, modes, modification timestamps, symbolic links and hard links within the exported tree. Imports support USTAR paths and forward hard-link references. GNU/PAX extensions are not supported; overlong paths or link targets fail explicitly. TAR is an interchange format, not a backup of storage generations or workspace settings.
+
+## Errors and diagnostics
+
+Catch `OpfsFsError` and branch on `code`. `CapabilityError`, `QuotaExceededError`, `ConflictError`, and `CorruptWorkspaceError` are specialized subclasses. Preserve `cause` when reporting failures. Do not interpret every failure as a missing file or reset user data automatically. See [operations and recovery](/opfs-fs/lifecycle/) for user-facing recovery steps.
+
+The root package exposes the filesystem and error/types API. `@kucukkanat/opfs-fs/just-bash` contains the optional shell adapter; `@kucukkanat/opfs-fs/tar` exposes TAR utilities. `@kucukkanat/opfs-fs/fx` provides checkpoint persistence without importing libfx; `@kucukkanat/opfs-fs/browser-zlib` is an explicit optional browser-shell compatibility shim. Package internals are private.
+
+## Change subscriptions and diagnostics
+
+`fs.subscribe(listener)` returns an unsubscribe function. `fs.getSnapshot()` returns the committed generation as a number. A notification means consumers should reread their data; it is not a list of changed paths. See the [React external-store recipe](/opfs-fs/react/#subscribe-to-committed-changes).
+
+```ts
+const workspace = await openWorkspace({
+  name: "project-42",
+  root: "/workspace",
+  onDiagnostic: (event) => {
+    console.warn("Workspace maintenance", event.type, event.workspace, event.generation, event.error)
+  },
+})
+```
+
+Diagnostics report recovery and background cleanup/refresh failures separately from ordinary operation rejections. An already published write is not reported as failed solely because later maintenance failed. Keep diagnostic handlers lightweight and route them to your application's logging UI when useful.

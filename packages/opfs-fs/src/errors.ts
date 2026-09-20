@@ -1,10 +1,37 @@
-export class OpfsFsError extends Error {
-  readonly code: string
+export type PosixErrorCode =
+  | "EEXIST"
+  | "EINVAL"
+  | "EISDIR"
+  | "ELOOP"
+  | "ENAMETOOLONG"
+  | "ENOENT"
+  | "ENOTDIR"
+  | "ENOTEMPTY"
+  | "EPERM"
+  | "EIO"
+export type OpfsFsErrorCode =
+  | PosixErrorCode
+  | "CAPABILITY_UNAVAILABLE"
+  | "CLOSED"
+  | "CONFLICT"
+  | "CORRUPT_WORKSPACE"
+  | "QUOTA_EXCEEDED"
+export type OpfsFsErrorOptions = ErrorOptions & Readonly<{ operation?: string; path?: string; workspace?: string }>
 
-  constructor(code: string, message: string, options?: ErrorOptions) {
+/** Stable error codes and optional context; inspect cause for the original storage failure. */
+export class OpfsFsError extends Error {
+  readonly code: OpfsFsErrorCode
+  readonly operation: string | undefined
+  readonly path: string | undefined
+  readonly workspace: string | undefined
+
+  constructor(code: OpfsFsErrorCode, message: string, options?: OpfsFsErrorOptions) {
     super(message, options)
     this.name = "OpfsFsError"
     this.code = code
+    this.operation = options?.operation
+    this.path = options?.path
+    this.workspace = options?.workspace
   }
 }
 
@@ -36,4 +63,5 @@ export class QuotaExceededError extends OpfsFsError {
   }
 }
 
-export const posixError = (code: string, message: string): OpfsFsError => new OpfsFsError(code, message)
+export const posixError = (code: PosixErrorCode, message: string, options?: OpfsFsErrorOptions): OpfsFsError =>
+  new OpfsFsError(code, message, options)

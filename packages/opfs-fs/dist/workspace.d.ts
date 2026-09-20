@@ -9,7 +9,11 @@ export declare class OpfsWorkspace implements WorkspaceFileSystem {
     }>;
     private constructor();
     static open(options: OpenWorkspaceOptions): Promise<OpfsWorkspace>;
+    subscribe(listener: () => void): () => void;
+    getSnapshot(): number;
     readFileBuffer(path: string): Promise<Uint8Array>;
+    readBytes(path: string): Promise<Uint8Array>;
+    readText(path: string): Promise<string>;
     readFileBytes(path: string): Promise<string>;
     readFile(path: string, options?: ReadEncoding | Readonly<{
         encoding?: ReadEncoding;

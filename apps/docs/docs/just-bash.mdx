@@ -3,7 +3,7 @@ title: just-bash
 description: Plug an OPFS workspace straight into just-bash.
 ---
 
-`@kucukkanat/opfs-fs/just-bash` is a zero-runtime adapter: the workspace already satisfies `just-bash`’s asynchronous filesystem contract.
+`@kucukkanat/opfs-fs/just-bash` is a focused runtime adapter. It explicitly maps the workspace to `just-bash`’s asynchronous filesystem contract and optionally supplies the renderer-neutral terminal session helpers.
 
 Install the GitHub package under its scoped name and add `just-bash`, which is
 an optional peer dependency of the core package:
@@ -21,9 +21,11 @@ import { createJustBashFileSystem } from "@kucukkanat/opfs-fs/just-bash"
 
 ```ts
 import { Bash } from "just-bash/browser"
+import { installBrowserBuffer } from "@kucukkanat/opfs-fs/browser-zlib"
 import { openWorkspace } from "@kucukkanat/opfs-fs"
 import { createJustBashFileSystem } from "@kucukkanat/opfs-fs/just-bash"
 
+installBrowserBuffer()
 const workspace = await openWorkspace({ name: "shell", root: "/workspace" })
 const bash = new Bash({
   fs: createJustBashFileSystem(workspace),
@@ -49,7 +51,7 @@ const shell = await attachJustBashTerminal({
   workspace: { name: "shell", root: "/workspace" },
 })
 
-shell.dispose()
+await shell.dispose()
 ```
 
 See the complete [xterm.js integration](/opfs-fs/xterm/) for React lifecycle
@@ -59,4 +61,46 @@ and initialization wiring.
 
 :::tip
 Keep the workspace open for the lifetime of your shell. Call `close()` only when your application disposes its terminal.
+
+## Execution and ownership
+
+Terminal input and `shell.execute(command, { signal })` share one execution queue. Ctrl-C cancels pending and running commands cooperatively. `await shell.dispose()` stops input and rendering immediately, cancels work, then waits for it to settle before closing an owned workspace.
+
+The session preserves the interpreter's working directory after normally completed scripts, including compound commands such as `cd src; ls`. Assigning or unsetting `PWD` does not change that directory. An early `exit`, abort, or interpreter error can prevent final directory capture, so the next invocation retains the previous session directory. Exports, functions, and other shell state remain isolated between executions; this is not a persistent native shell process.
+
+To share an application-owned workspace with an editor or agent, borrow it explicitly:
+
+```ts
+const shell = await attachJustBashTerminal({
+  terminal,
+  workspace: { instance: fs, ownership: "borrowed" },
+})
+await shell.execute("printf 'shared workspace' > note.txt")
+await shell.dispose() // fs remains open for its owner
+```
+
+Use `ownership: "owned"` to transfer cleanup responsibility. `createJustBashFileSystem()` also accepts the structural `WorkspaceFileSystem` contract, including the handle supplied inside `transaction()`. Await all shell work before that transaction callback returns.
 :::
+
+## Browser bundlers and compression
+
+The supported just-bash version imports Node's synchronous zlib API in its browser dependency graph. For Vite, install the optional compression peer and alias that import to the browser shim:
+
+```sh
+bun add fflate buffer
+```
+
+```ts
+// vite.config.ts
+import { defineConfig } from "vite"
+
+export default defineConfig({
+  resolve: {
+    alias: { "node:zlib": "@kucukkanat/opfs-fs/browser-zlib" },
+  },
+})
+```
+
+Call `installBrowserBuffer()` once during browser shell initialization as shown above. It explicitly installs the `Buffer` compatibility global needed by some just-bash commands; importing the shim alone does not change globals.
+
+The filesystem core does not need `fflate` or `buffer`. This optional shim uses it because just-bash needs synchronous compression/decompression; the browser's asynchronous `CompressionStream` cannot satisfy that interface. The docs app applies the same alias through Blume's TypeScript-path support. For another bundler, configure its equivalent alias rather than externalizing `node:zlib` to an empty browser module.

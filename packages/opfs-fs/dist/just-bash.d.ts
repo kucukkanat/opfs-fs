@@ -1,12 +1,15 @@
 import { Bash, type BashOptions, type IFileSystem } from "just-bash/browser";
 import { type OpfsWorkspace } from "./workspace.js";
-import type { OpenWorkspaceOptions } from "./types.js";
+import type { OpenWorkspaceOptions, WorkspaceFileSystem } from "./types.js";
 export type TerminalWriter = (value: string) => void;
 export type JustBashExecution = Awaited<ReturnType<InstanceType<typeof Bash>["exec"]>>;
 export type JustBashTerminalSession = Readonly<{
     readonly cwd: string;
     readonly history: readonly string[];
-    execute: (command: string) => Promise<JustBashExecution>;
+    execute: (command: string, options?: Readonly<{
+        signal?: AbortSignal;
+    }>) => Promise<JustBashExecution>;
+    dispose: () => Promise<void>;
     handleInput: (data: string, write: TerminalWriter) => void;
     writePrompt: (write: TerminalWriter) => void;
 }>;
@@ -18,7 +21,10 @@ export type TerminalPort = Readonly<{
 }>;
 export type AttachJustBashTerminalOptions = Readonly<{
     terminal: TerminalPort;
-    workspace: OpenWorkspaceOptions;
+    workspace: OpenWorkspaceOptions | Readonly<{
+        instance: OpfsWorkspace;
+        ownership: "borrowed" | "owned";
+    }>;
     banner?: string;
     prompt?: string | ((cwd: string) => string);
     executionLimitProfile?: BashOptions["executionLimitProfile"];
@@ -34,10 +40,10 @@ export type AttachedJustBashTerminal = Readonly<{
     session: JustBashTerminalSession;
     readonly cwd: string;
     execute: JustBashTerminalSession["execute"];
-    dispose: () => void;
+    dispose: () => Promise<void>;
 }>;
 /** Exposes an OPFS workspace through just-bash's filesystem contract. */
-export declare const createJustBashFileSystem: (workspace: OpfsWorkspace) => IFileSystem;
+export declare const createJustBashFileSystem: (workspace: WorkspaceFileSystem) => IFileSystem;
 /**
  * Adds interactive terminal behavior to a Bash instance without coupling it to
  * a renderer. Pass xterm.js, wterm, or another terminal's input to handleInput.

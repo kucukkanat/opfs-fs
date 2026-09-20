@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OPFS browser agent workspace</title>
+  <style>
+    :root { color-scheme: light dark; font: 16px/1.6 system-ui, sans-serif; }
+    body { max-width: 760px; margin: 48px auto; padding: 0 24px; }
+    textarea { display: block; width: 100%; box-sizing: border-box; min-height: 180px; margin: 12px 0; padding: 12px; font: 15px/1.5 monospace; }
+    button { padding: 10px 16px; margin: 0 8px 8px 0; cursor: pointer; }
+    section { margin-top: 36px; } output { display: block; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>Your workspace stays in the browser.</h1>
+  <p>Edit a file, reload the page, and restore it from OPFS. The same workspace can store an fx agent’s conversation checkpoint.</p>
+  <section aria-labelledby="file-heading">
+    <h2 id="file-heading">Persistent file</h2>
+    <label for="content">/workspace/note.txt</label>
+    <textarea id="content">Hello from a persistent browser workspace.</textarea>
+    <button type="button" id="save" disabled>Save file</button>
+    <button type="button" id="load" disabled>Restore file</button>
+  </section>
+  <section aria-labelledby="agent-heading">
+    <h2 id="agent-heading">Real fx checkpoint round trip</h2>
+    <p>Create an idle WebAssembly agent, save its checkpoint to OPFS, then restore a second agent. This example makes no model requests and needs no API key.</p>
+    <button type="button" id="checkpoint" disabled>Save and restore checkpoint</button>
+  </section>
+  <output id="status">Opening workspace…</output>
+  <script type="module" src="/main.js"></script>
+</body>
+</html>

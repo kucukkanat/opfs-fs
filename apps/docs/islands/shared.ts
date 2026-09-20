@@ -7,4 +7,5 @@ export const demoWorkspaceName = (demo: string): string => {
   return created
 }
 
-export const formatError = (error: unknown): string => error instanceof Error ? error.message : "An unknown error occurred."
+export const formatError = (error: unknown): string =>
+  error instanceof Error ? error.message : "An unknown error occurred."

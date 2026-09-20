@@ -1,0 +1,69 @@
+---
+title: React
+description: Open an OPFS workspace on the client and handle asynchronous mount and cleanup.
+---
+
+Open the workspace in an effect or application-owned browser service. Avoid opening it during render or server rendering. This component closes an opening handle even if it resolves after unmount; it also discards a stale read. React development Strict Mode can start and clean up an effect more than once.
+
+```tsx
+"use client"
+
+import { useEffect, useState } from "react"
+import { openWorkspace, type OpfsWorkspace } from "@kucukkanat/opfs-fs"
+
+export function SavedNote() {
+  const [text, setText] = useState("Loading…")
+
+  useEffect(() => {
+    let active = true
+    let workspace: OpfsWorkspace | undefined
+    const load = async () => {
+      try {
+        workspace = await openWorkspace({ name: "notes", root: "/workspace" })
+        if (!active) { workspace.close(); return }
+        const exists = await workspace.exists("/workspace/note.txt")
+        const content = exists ? await workspace.readFile("/workspace/note.txt") : "No saved note yet."
+        if (active) setText(content)
+      } catch (error) {
+        workspace?.close()
+        if (active) setText(error instanceof Error ? error.message : String(error))
+      }
+    }
+    void load()
+    return () => { active = false; workspace?.close() }
+  }, [])
+
+  return <pre aria-live="polite">{text}</pre>
+}
+```
+
+For editors, retain one application-owned handle and pass it through context. Render saving/error state explicitly; await a write before reporting it as saved. Consumers that borrow this handle must not close it. Keep filesystem changes outside render, including render-time initializers.
+
+The [homepage editor](/opfs-fs/#try-it-in-your-browser) implements save, restore and reset with real OPFS. [xterm.js](/opfs-fs/xterm/) and [wterm](/opfs-fs/wterm/) show renderer lifecycles, including asynchronous terminal disposal. Browser workers can own a workspace too; pass application messages rather than trying to transfer the class instance.
+
+## Subscribe to committed changes
+
+`subscribe()` returns an unsubscribe function and `getSnapshot()` returns the current committed generation. React can observe that stable scalar with `useSyncExternalStore`; read file content asynchronously after it changes. Notifications reflect local commits and cross-context refreshes, not transaction drafts.
+
+```tsx
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react"
+import type { OpfsWorkspace } from "@kucukkanat/opfs-fs"
+
+export function LiveNote({ fs }: { fs: OpfsWorkspace }) {
+  const subscribe = useCallback((notify: () => void) => fs.subscribe(notify), [fs])
+  const snapshot = useCallback(() => fs.getSnapshot(), [fs])
+  const generation = useSyncExternalStore(subscribe, snapshot, () => 0)
+  const [text, setText] = useState("Loading…")
+  useEffect(() => {
+    let active = true
+    void fs.readText("/workspace/note.txt").then(
+      (content) => { if (active) setText(content) },
+      (error: unknown) => { if (active) setText(error instanceof Error ? error.message : String(error)) },
+    )
+    return () => { active = false }
+  }, [fs, generation])
+  return <pre aria-live="polite">{text}</pre>
+}
+```
+
+This component borrows `fs`; the application that opened it owns cleanup. Unmount consumers and settle their work before closing the handle. Where `BroadcastChannel` is unavailable, an asynchronous filesystem operation refreshes the local snapshot; subscriptions are not a polling service.

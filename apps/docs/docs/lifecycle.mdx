@@ -20,12 +20,62 @@ const persistent = await fs.storage.requestPersistence()
 const tar = await fs.exportArchive({ format: "tar" })
 const download = URL.createObjectURL(tar)
 
+const link = Object.assign(document.createElement("a"), { href: download, download: "workspace.tar" })
+link.click()
+URL.revokeObjectURL(download)
+
 await fs.reset() // destructive: confirm this with the user first
 await fs.importArchive(tar)
 ```
 
-Exports preserve files, directories, modes, and symbolic links. The managed OPFS layout is intentionally private; use TAR for portability.
+Exports preserve files, directories, modes, modification timestamps, symbolic links, and hard links within the exported tree. Import paths are always relative to `workspace.root`; absolute and traversal paths are rejected. The managed OPFS layout is intentionally private; use TAR for portability.
 
 ## Multiple tabs and workers
 
-Writes are serialized through Web Locks. Each mutation publishes a new immutable metadata generation, so a reader sees either the previous complete tree or the next complete tree—never an intermediate transaction.
+Writes, initial creation, and recovery-pointer repair are serialized through Web Locks. Each mutation publishes a new immutable metadata generation, so an asynchronous reader sees either the previous complete tree or the next complete tree—never an intermediate transaction. `getAllPaths()` is the local synchronous snapshot required by `just-bash`; await an asynchronous operation before relying on it after another context writes.
+
+## Environment requirements
+
+Use HTTPS or a trustworthy local development origin such as localhost. Check the actual runtime, because browser settings, embedded frames and storage policy affect availability independently of the browser name.
+
+| Environment | What to verify |
+| --- | --- |
+| Chromium desktop | Real OPFS flows are exercised by the repository's browser tests using the installed Chrome executable. |
+| Firefox and Safari | Verify OPFS, Web Locks and Web Crypto in your supported versions; this repository does not claim a tested version matrix for these engines. |
+| Mobile and embedded WebViews | Run the same capability and persistence journey on the actual host. No blanket support guarantee. |
+| Private browsing / embedded frames | Storage availability and retention depend on browser policy. Opening can fail even when the methods exist. |
+| Dedicated browser workers | Check the same capabilities inside the worker. Rendering libraries remain on the UI thread. |
+| Node, Bun and server rendering | Build/test tooling can run here; opening this browser filesystem requires browser storage APIs. |
+
+```ts
+const capabilities = {
+  secureContext: globalThis.isSecureContext === true,
+  opfs: typeof navigator !== "undefined" && typeof navigator.storage?.getDirectory === "function",
+  locks: typeof navigator !== "undefined" && typeof navigator.locks?.request === "function",
+  crypto: typeof globalThis.crypto?.subtle?.digest === "function",
+}
+console.table(capabilities)
+```
+
+These checks help explain the environment; still handle rejection from `openWorkspace()`. The library does not replace unavailable OPFS with volatile storage. See [MDN's OPFS documentation](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API/Origin_private_file_system) for browser storage behavior.
+
+## Troubleshooting and recovery
+
+- **Cannot open:** inspect the capability report above and the thrown error/cause. Confirm the page's origin and security context. Opening must happen on the browser client.
+- **Quota exceeded:** show origin usage/quota, stop repeated retries, and offer export or deliberate deletion. Requesting persistence does not grant unlimited quota.
+- **Files seem missing:** confirm the same origin and workspace name. Changing protocol, host or port changes the origin. Clearing site data removes OPFS storage.
+- **Corruption:** retain the error/cause and workspace name, stop writes, and offer export if readable. Do not automatically call `reset()`; that destroys the data you may need to recover.
+- **Another tab's update is not visible:** await an asynchronous read to refresh the local view. `getAllPaths()` alone is synchronous.
+
+Use the browser's storage inspector to investigate origin usage. The internal OPFS directories contain managed metadata and content objects; editing them directly bypasses consistency checks. Use filesystem APIs or TAR exports to inspect application files.
+
+Durability means committed application changes survive normal reopen/reload. It does not promise survival after browser eviction, site-data clearing, profile deletion or device failure. Back up important files outside the origin. Persistence requests may reduce eviction risk but remain subject to browser policy.
+
+## Workload limits
+
+Reads, writes and TAR import/export materialize data in memory. `Blob.stream()` streams an already-built archive to a consumer; it does not make archive creation streaming. Measure representative project sizes before using this API for very large binaries. Metadata updates and browser storage latency also matter when an agent creates many small files; group related changes in a transaction.
+
+Mode bits are metadata, and `root` is not a sandbox. Expose a narrow, authorized set of operations to model-generated code. A terminal execution limit is not an origin-wide security boundary.
+
+
+Run the reproducible browser workload benchmark from a checkout with `bun run --filter=@kucukkanat/opfs-fs bench`. Its timings describe that browser, device and workload; they are not latency guarantees. Use your own representative file count, sizes and write patterns when choosing transaction boundaries.

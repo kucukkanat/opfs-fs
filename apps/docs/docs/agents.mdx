@@ -1,0 +1,104 @@
+---
+title: Browser agents
+description: Give AI SDK and fx.sh tools persistent browser files and save fx conversation checkpoints.
+---
+
+Keep the filesystem and tool callbacks in the browser context that owns OPFS. A server-side tool cannot read this origin's files directly. Agent execution in the browser does not imply local model inference: model requests still use your chosen provider and transport.
+
+Start with narrowly scoped tools. The recipes below expose one notes file; they do not grant arbitrary paths or shell execution. `root` and mode bits are not a sandbox. Choose credential handling and model transport for your application; do not bundle a shared secret into public JavaScript.
+
+## AI SDK tools
+
+Install `ai` alongside the filesystem package. This factory can be passed as `tools` to your browser-owned AI SDK invocation. It uses JSON Schema without adding a schema-library dependency. See the official [tool contract](https://ai-sdk.dev/docs/reference/ai-sdk-core/tool) and [tool execution/cancellation](https://ai-sdk.dev/docs/ai-sdk-core/tools-and-tool-calling).
+
+```ts
+import { jsonSchema, tool } from "ai"
+import type { OpfsWorkspace } from "@kucukkanat/opfs-fs"
+
+export function createNoteTools(fs: OpfsWorkspace) {
+  return {
+    save_note: tool({
+      description: "Replace the user's saved project note (up to 16000 characters).",
+      inputSchema: jsonSchema<{ text: string }>({
+        type: "object",
+        properties: { text: { type: "string", maxLength: 16000 } },
+        required: ["text"],
+        additionalProperties: false,
+      }),
+      execute: async ({ text }, { abortSignal }) => {
+        if (typeof text !== "string" || text.length > 16000) throw new Error("Invalid note")
+        abortSignal?.throwIfAborted()
+        await fs.writeFile("/workspace/note.txt", text)
+        return { saved: true }
+      },
+    }),
+  }
+}
+```
+
+Open with `root: "/workspace"` before calling this factory and close after tool execution settles. Cancellation is checked before the write; it does not roll back an already committed file. Ask for user approval in your application when the tool's effect requires it.
+
+## fx.sh headless agent
+
+This recipe targets the documented `libfx@0.0.10` headless API. Install `libfx` and call `runNotesAgent` from the browser with an application-provided credential, prompt, and text callback. Confirm JSPI availability separately from OPFS support; see the official [WebAssembly setup](https://fx.sh/docs/lib/webassembly). Pin and verify the libfx version used by your app.
+
+```ts
+import { createFxAgent, supportsJspi } from "libfx"
+import { createFxCheckpointStore } from "@kucukkanat/opfs-fs/fx"
+import { openWorkspace } from "@kucukkanat/opfs-fs"
+
+export async function runNotesAgent(
+  apiKey: string,
+  prompt: string,
+  onText: (text: string) => void,
+  signal: AbortSignal,
+) {
+  if (!supportsJspi()) throw new Error("This browser does not support fx WebAssembly JSPI")
+  const fs = await openWorkspace({ name: "fx-notes", root: "/workspace" })
+  let agent: Awaited<ReturnType<typeof createFxAgent>> | undefined
+  try {
+    const store = createFxCheckpointStore(fs, "/workspace/conversation.bin")
+    const checkpoint = await store.load()
+    agent = await createFxAgent({
+      apiKey,
+      ...(checkpoint ? { checkpoint } : {}),
+      tools: [{
+        name: "save_note",
+        description: "Save a project note, at most 16000 characters.",
+        inputSchema: {
+          type: "object",
+          properties: { text: { type: "string", maxLength: 16000 } },
+          required: ["text"],
+          additionalProperties: false,
+        },
+        execute: async (input: unknown, context: { signal: AbortSignal }) => {
+          if (typeof input !== "object" || input === null || !("text" in input) ||
+              typeof input.text !== "string" || input.text.length > 16000) {
+            throw new Error("Expected a bounded text note")
+          }
+          context.signal.throwIfAborted()
+          await fs.writeFile("/workspace/note.txt", input.text)
+          return "Note saved"
+        },
+      }],
+    })
+    const turn = agent.prompt(prompt, { signal })
+    for await (const event of turn) {
+      if (event.type === "text_delta") onText(event.delta)
+    }
+    const result = await turn.result
+    await store.save(agent)
+    return result
+  } finally {
+    try { await agent?.close() } finally { fs.close() }
+  }
+}
+```
+
+The agent owns conversation state; OPFS stores checkpoint bytes and tool-created files. Checkpoint only after the turn settles, and restore using the same application tool configuration. This example assumes one active owner of the conversation; coordinate multiple tabs before overwriting its checkpoint. Contract details: [libfx API reference](https://fx.sh/docs/lib/api).
+
+## Shells and the fx terminal
+
+For shell tools, adapt the same workspace with `createJustBashFileSystem()` and pass cancellation through to your shell executor. Add an application policy for commands, file scope, output size, and network access. The [just-bash setup](/opfs-fs/just-bash/#browser-bundlers-and-compression) includes its browser bundler requirement.
+
+The headless `createFxAgent()` tool API differs from `createFxTerminal()`'s `WorkspaceAdapter` and revisioned `SessionStore`. A filesystem object is not a drop-in replacement for either. Follow the [official terminal embedding contracts](https://fx.sh/docs/lib/terminal), including workspace declarations, permission mode, execution limits and revision conflicts. Use headless host tools when your application owns the UI and checkpoint lifecycle.

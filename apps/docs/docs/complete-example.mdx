@@ -5,25 +5,31 @@ description: One browser application flow covering the opfs-fs API and just-bash
 
 This is the canonical end-to-end example. It starts from an empty named workspace, builds a small project atomically, demonstrates POSIX metadata and links, runs `just-bash`, exports and restores a TAR, reports storage, handles typed errors, and closes the workspace.
 
+Apply the [browser shell bundler setup](/opfs-fs/just-bash/#browser-bundlers-and-compression) first.
+
 It is deliberately a single flow rather than a collection of disconnected snippets. The `reset()` calls are safe here only because the example owns the `complete-demo` workspace; production UI should require confirmation before reset.
 
 ```package-install
-npm install @kucukkanat/opfs-fs just-bash
+npm install @kucukkanat/opfs-fs@github:kucukkanat/opfs-fs#main just-bash
 ```
 
 ```ts
 import { Bash } from "just-bash/browser"
+import { installBrowserBuffer } from "@kucukkanat/opfs-fs/browser-zlib"
 import {
   CapabilityError,
   OpfsFsError,
   openWorkspace,
+  type OpfsWorkspace,
 } from "@kucukkanat/opfs-fs"
 import { createJustBashFileSystem } from "@kucukkanat/opfs-fs/just-bash"
 
 const root = "/workspace"
-const workspace = await openWorkspace({ name: "complete-demo", root })
+let workspace: OpfsWorkspace | undefined
 
 try {
+  installBrowserBuffer()
+  workspace = await openWorkspace({ name: "complete-demo", root })
   // This example owns this named workspace. Do not reset a user's workspace
   // without a confirmation step in your application.
   await workspace.reset()
@@ -32,9 +38,9 @@ try {
   await workspace.transaction(async (fs) => {
     await fs.mkdir(`${root}/src`, { recursive: true })
     await fs.mkdir(`${root}/bin`, { recursive: true })
-    await fs.writeFile(`${root}/README.md`, "# OPFS project\\n", { mode: 0o644 })
-    await fs.appendFile(`${root}/README.md`, "Built atomically.\\n")
-    await fs.writeFile(`${root}/src/main.ts`, "export const answer = 42\\n")
+    await fs.writeFile(`${root}/README.md`, "# OPFS project\n", { mode: 0o644 })
+    await fs.appendFile(`${root}/README.md`, "Built atomically.\n")
+    await fs.writeFile(`${root}/src/main.ts`, "export const answer = 42\n")
     await fs.writeFile(`${root}/bin/icon.bin`, new Uint8Array([0x4f, 0x50, 0x46, 0x53]))
 
     // Hard links share an inode; symbolic links preserve their target text.
@@ -77,7 +83,7 @@ try {
     cwd: root,
     executionLimitProfile: "hardened",
   })
-  const command = await bash.exec("printf 'written by just-bash\\n' > shell.txt; cat shell.txt")
+  const command = await bash.exec("printf 'written by just-bash\n' > shell.txt; cat shell.txt")
   console.log(command.stdout) // written by just-bash
 
   // TAR is the portable representation. It includes files, directories, modes,
@@ -105,12 +111,12 @@ try {
     throw error
   }
 } finally {
-  workspace.close()
+  workspace?.close()
 }
 ```
 
-To make the same workspace interactive, pass it to the [just-bash adapter](/opfs-fs/just-bash/) and route each `wterm` command line to `bash.exec(command, { cwd })`. The [live wterm example](/opfs-fs/wterm/) includes the small session layer that retains `cd` and command history between commands.
+To make the same workspace interactive, use `attachJustBashTerminal()` from the [just-bash adapter](/opfs-fs/just-bash/). It owns the workspace, `Bash`, prompt, history, terminal output normalization, and disposal; the [live wterm example](/opfs-fs/wterm/) shows the small renderer bridge.
 
 :::tip
-`opfs-fs` v1 exposes byte-oriented reads and writes (`readFileBuffer()` and `writeFile()` with `Uint8Array`) rather than filesystem stream methods. Use the browser's `Blob.stream()` on an exported archive when you need stream consumption.
+`opfs-fs` exposes byte-oriented reads and writes (`readFileBuffer()` and `writeFile()` with `Uint8Array`) rather than filesystem stream methods. Use the browser's `Blob.stream()` on an exported archive when you need stream consumption.
 :::

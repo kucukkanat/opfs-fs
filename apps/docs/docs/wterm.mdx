@@ -6,61 +6,68 @@ description: Build a live browser terminal backed by just-bash and opfs-fs.
 `wterm` supplies terminal rendering and input; `just-bash` executes commands; `opfs-fs` owns the durable filesystem. Keeping those roles separate makes each layer replaceable.
 
 ```package-install
-npm install @kucukkanat/opfs-fs just-bash @wterm/react @wterm/dom react react-dom
+npm install @kucukkanat/opfs-fs@github:kucukkanat/opfs-fs#main just-bash @wterm/react @wterm/dom react react-dom
 ```
 
+Apply the [browser compression alias](/opfs-fs/just-bash/#browser-bundlers-and-compression) before running this example.
+
 ```tsx
-import { useCallback, useEffect, useRef } from "react"
+import { installBrowserBuffer } from "@kucukkanat/opfs-fs/browser-zlib"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Terminal, useTerminal } from "@wterm/react"
+import "@wterm/react/css"
 import {
   attachJustBashTerminal,
   type AttachedJustBashTerminal,
-  type TerminalPort,
 } from "@kucukkanat/opfs-fs/just-bash"
 
 export function OpfsWterm() {
   const { ref, write } = useTerminal()
   const writer = useRef(write)
-  const listener = useRef<(data: string) => void>(() => {})
-  const shell = useRef<AttachedJustBashTerminal | null>(null)
   writer.current = write
+  const listener = useRef<(data: string) => void>(() => {})
+  const [ready, setReady] = useState(false)
+  const onData = useCallback((data: string) => listener.current(data), [])
+  const onReady = useCallback(() => setReady(true), [])
 
-  const terminal = useRef<TerminalPort>({
-    write: (value) => writer.current(value),
-    onData: (onData) => {
-      listener.current = onData
-      return { dispose: () => { listener.current = () => {} } }
-    },
-  })
-
-  const start = useCallback(() => {
-    if (shell.current) return
+  useEffect(() => {
+    installBrowserBuffer()
+    if (!ready) return
+    let disposed = false
+    let shell: AttachedJustBashTerminal | undefined
+    const close = (session: AttachedJustBashTerminal) => {
+      void Promise.resolve(session.dispose()).catch(console.error)
+    }
     void attachJustBashTerminal({
-      terminal: terminal.current,
+      terminal: {
+        write: (value) => { if (!disposed) writer.current(value) },
+        onData: (callback) => {
+          if (!disposed) listener.current = callback
+          return { dispose: () => {
+            if (listener.current === callback) listener.current = () => {}
+          } }
+        },
+      },
       workspace: { name: "terminal", root: "/workspace" },
       executionLimitProfile: "hardened",
       initialize: async ({ workspace }) => {
-        await workspace.writeFile("/workspace/welcome.txt", "Hello from OPFS\\n")
+        if (!await workspace.exists("/workspace/welcome.txt")) {
+          await workspace.writeFile("/workspace/welcome.txt", "Hello from OPFS\n")
+        }
       },
     }).then(
-      (attached) => { shell.current = attached },
-      (error: unknown) => writer.current(`Unable to open OPFS: ${String(error)}\\r\\n`),
+      (attached) => { if (disposed) close(attached); else shell = attached },
+      (error: unknown) => { if (!disposed) writer.current(`Unable to open OPFS: ${String(error)}\r\n`) },
     )
-  }, [])
+    return () => {
+      disposed = true
+      listener.current = () => {}
+      if (shell) close(shell)
+    }
+  }, [ready])
 
-  const onData = useCallback((data: string) => listener.current(data), [])
-  useEffect(() => () => shell.current?.dispose(), [])
-
-  return <Terminal
-    ref={ref}
-    cols={80}
-    rows={18}
-    autoResize
-    cursorBlink
-    theme="monokai"
-    onData={onData}
-    onReady={start}
-  />
+  return <Terminal ref={ref} cols={80} rows={18} autoResize cursorBlink
+    theme="monokai" onData={onData} onReady={onReady} />
 }
 ```
 

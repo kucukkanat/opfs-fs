@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "paths": {
+      "node:zlib": ["../../packages/opfs-fs/dist/browser-zlib.js"]
+    },
+    "declaration": false,
+    "declarationMap": false,
+    "types": ["react", "react-dom"]
+  },
+  "include": ["islands/**/*.ts", "islands/**/*.tsx", "blume.config.ts"]
+}
